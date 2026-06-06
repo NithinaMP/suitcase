@@ -7,7 +7,7 @@ import 'providers/lookbook_provider.dart';
 import 'views/splash/splash_view.dart';
 import 'views/home/home_view.dart';
 import 'core/constants/app_theme.dart';
-// import 'firebase_options.dart'; // ← uncomment after flutterfire configure
+import 'firebase_options.dart'; // ← uncomment after flutterfire configure
 
 // ══════════════════════════════════════════════════════════════
 //  SUITCASE — main.dart
@@ -20,7 +20,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp(
-    // options: DefaultFirebaseOptions.currentPlatform, // ← uncomment after flutterfire configure
+    options: DefaultFirebaseOptions.currentPlatform, // ← uncomment after flutterfire configure
   );
 
   runApp(const SuitcaseApp());
