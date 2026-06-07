@@ -1,21 +1,24 @@
-// ══════════════════════════════════════════════════════════════
-//  SUITCASE — Phase 2 Trip Models
-// ══════════════════════════════════════════════════════════════
-
 import 'lookbook_models.dart';
 
-// ─── Trip Request ─────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+//  SUITCASE — Trip Models v2
+//  Pack items now categorised: The Base / The Layers / The Accents
+//  Locations now include golden_hour_time and golden_hour_tip
+// ══════════════════════════════════════════════════════════════
+
 class TripRequest {
   final String destination;
   final String month;
   final int durationDays;
   final String stylePreference;
+  final bool sustainable;
 
   const TripRequest({
     required this.destination,
     required this.month,
     required this.durationDays,
     required this.stylePreference,
+    this.sustainable = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -23,6 +26,25 @@ class TripRequest {
     'month': month,
     'duration_days': durationDays,
     'style_preference': stylePreference,
+    'sustainable': sustainable,
+  };
+}
+
+// ─── Pack Category (The Base / The Layers / The Accents) ──────
+class PackCategory {
+  final String category;
+  final List<String> items;
+
+  const PackCategory({required this.category, required this.items});
+
+  factory PackCategory.fromJson(Map<String, dynamic> j) => PackCategory(
+    category: j['category'] ?? '',
+    items: List<String>.from(j['items'] ?? []),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'category': category,
+    'items': items,
   };
 }
 
@@ -31,8 +53,10 @@ class CuratedLocation {
   final String placeName;
   final String streetAddress;
   final String aestheticJustification;
-  final String? suggestedTime; // e.g. "10:00 AM"
-  final String? locationType;  // e.g. "Café", "Museum", "Market"
+  final String? suggestedTime;
+  final String? locationType;
+  final String? goldenHourTime;
+  final String? goldenHourTip;
 
   const CuratedLocation({
     required this.placeName,
@@ -40,6 +64,8 @@ class CuratedLocation {
     required this.aestheticJustification,
     this.suggestedTime,
     this.locationType,
+    this.goldenHourTime,
+    this.goldenHourTip,
   });
 
   factory CuratedLocation.fromJson(Map<String, dynamic> j) => CuratedLocation(
@@ -48,6 +74,8 @@ class CuratedLocation {
     aestheticJustification: j['aesthetic_justification'] ?? '',
     suggestedTime: j['suggested_time'],
     locationType: j['location_type'],
+    goldenHourTime: j['golden_hour_time'],
+    goldenHourTip: j['golden_hour_tip'],
   );
 
   Map<String, dynamic> toJson() => {
@@ -56,18 +84,20 @@ class CuratedLocation {
     'aesthetic_justification': aestheticJustification,
     'suggested_time': suggestedTime,
     'location_type': locationType,
+    'golden_hour_time': goldenHourTime,
+    'golden_hour_tip': goldenHourTip,
   };
 }
 
 // ─── Daily Plan ───────────────────────────────────────────────
 class DailyPlan {
   final int dayNumber;
-  final String themeTitle;       // e.g. "Neon Minimalist & Shibuya Crossings"
+  final String themeTitle;
   final String weatherForecast;
   final FashionProfile fashionProfile;
   final List<String> visualAssets;
   final List<CuratedLocation> curatedLocations;
-  final List<String> packItems;  // key pieces for this day
+  final List<PackCategory> packCategories; // OOTD categorised
 
   const DailyPlan({
     required this.dayNumber,
@@ -76,20 +106,46 @@ class DailyPlan {
     required this.fashionProfile,
     required this.visualAssets,
     required this.curatedLocations,
-    required this.packItems,
+    required this.packCategories,
   });
 
-  factory DailyPlan.fromJson(Map<String, dynamic> j) => DailyPlan(
-    dayNumber: j['day_number'] ?? 0,
-    themeTitle: j['theme_title'] ?? '',
-    weatherForecast: j['weather_forecast'] ?? '',
-    fashionProfile: FashionProfile.fromJson(j['fashion_profile'] ?? {}),
-    visualAssets: List<String>.from(j['visual_assets'] ?? []),
-    curatedLocations: (j['curated_locations'] as List<dynamic>? ?? [])
-        .map((e) => CuratedLocation.fromJson(e as Map<String, dynamic>))
-        .toList(),
-    packItems: List<String>.from(j['pack_items'] ?? []),
-  );
+  // Flat list of all pack items across all categories
+  List<String> get allPackItems =>
+      packCategories.expand((c) => c.items).toList();
+
+  factory DailyPlan.fromJson(Map<String, dynamic> j) {
+    // Handle both new categorised format and old flat list
+    List<PackCategory> categories = [];
+    final rawPack = j['pack_items'];
+    if (rawPack is List) {
+      if (rawPack.isNotEmpty && rawPack[0] is Map) {
+        // New categorised format
+        categories = rawPack
+            .map((e) => PackCategory.fromJson(e as Map<String, dynamic>))
+            .toList();
+      } else {
+        // Old flat string list — wrap in single category
+        categories = [
+          PackCategory(
+            category: 'Key Pieces',
+            items: List<String>.from(rawPack),
+          ),
+        ];
+      }
+    }
+
+    return DailyPlan(
+      dayNumber: j['day_number'] ?? 0,
+      themeTitle: j['theme_title'] ?? '',
+      weatherForecast: j['weather_forecast'] ?? '',
+      fashionProfile: FashionProfile.fromJson(j['fashion_profile'] ?? {}),
+      visualAssets: List<String>.from(j['visual_assets'] ?? []),
+      curatedLocations: (j['curated_locations'] as List<dynamic>? ?? [])
+          .map((e) => CuratedLocation.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      packCategories: categories,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
     'day_number': dayNumber,
@@ -98,7 +154,7 @@ class DailyPlan {
     'fashion_profile': fashionProfile.toJson(),
     'visual_assets': visualAssets,
     'curated_locations': curatedLocations.map((l) => l.toJson()).toList(),
-    'pack_items': packItems,
+    'pack_items': packCategories.map((c) => c.toJson()).toList(),
   };
 }
 
@@ -110,7 +166,6 @@ class TripItinerary {
   final int durationDays;
   final String overallVibe;
   final List<DailyPlan> days;
-  final List<String> masterPackList; // deduplicated across all days
 
   const TripItinerary({
     required this.tripId,
@@ -119,19 +174,23 @@ class TripItinerary {
     required this.durationDays,
     required this.overallVibe,
     required this.days,
-    required this.masterPackList,
   });
+
+  // Deduplicated master pack list with categories preserved
+  Map<String, Set<String>> get masterPackByCategory {
+    final map = <String, Set<String>>{};
+    for (final day in days) {
+      for (final cat in day.packCategories) {
+        map.putIfAbsent(cat.category, () => {}).addAll(cat.items);
+      }
+    }
+    return map;
+  }
 
   factory TripItinerary.fromJson(Map<String, dynamic> j) {
     final days = (j['itinerary_days'] as List<dynamic>? ?? [])
         .map((e) => DailyPlan.fromJson(e as Map<String, dynamic>))
         .toList();
-
-    // Build master pack list — deduplicated across all days
-    final allItems = <String>{};
-    for (final day in days) {
-      allItems.addAll(day.packItems);
-    }
 
     return TripItinerary(
       tripId: j['trip_id'] ?? '',
@@ -140,7 +199,6 @@ class TripItinerary {
       durationDays: j['duration_days'] ?? days.length,
       overallVibe: j['overall_vibe'] ?? '',
       days: days,
-      masterPackList: allItems.toList(),
     );
   }
 
@@ -151,11 +209,10 @@ class TripItinerary {
     'duration_days': durationDays,
     'overall_vibe': overallVibe,
     'itinerary_days': days.map((d) => d.toJson()).toList(),
-    'master_pack_list': masterPackList,
   };
 }
 
-// ─── Saved Trip (Firestore) ───────────────────────────────────
+// ─── Saved Trip ───────────────────────────────────────────────
 class SavedTrip {
   final String id;
   final String userId;
