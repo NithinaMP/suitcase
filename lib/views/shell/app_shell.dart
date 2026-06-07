@@ -2,23 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../core/constants/app_theme.dart';
-// import '../core/constants/app_theme.dart';
-import '../saved/saved_view.dart';
-import '../travel/trip_setup_view.dart';
-// import '../views/home/home_view.dart';
-// import '../views/travel/trip_setup_view.dart';
-// import '../views/saved/saved_view.dart';
 import '../home/home_view.dart';
+import '../travel/trip_setup_view.dart';
+import '../saved/saved_view.dart';
 
 // ══════════════════════════════════════════════════════════════
-//  SUITCASE — App Shell
-//  Bottom navigation connecting:
-//    0 → Fashion Generator (Phase 1)
-//    1 → Travel Planner (Phase 2)
-//    2 → Saved (looks + trips unified)
-//
-//  Design: Floating pill nav bar — editorial, minimal
-//  Stays on current tab state when switching
+//  APP SHELL v2 — Light theme floating nav
 // ══════════════════════════════════════════════════════════════
 
 class AppShell extends StatefulWidget {
@@ -29,12 +18,12 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
+class _AppShellState extends State<AppShell>
+    with SingleTickerProviderStateMixin {
   late int _currentIndex;
   late AnimationController _navCtrl;
   late Animation<double> _navAnim;
 
-  // Keep pages alive when switching tabs
   final _pages = const [
     HomeView(insideShell: true),
     TripSetupView(),
@@ -47,12 +36,14 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
     _currentIndex = widget.initialIndex;
     _navCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 600));
-    _navAnim = CurvedAnimation(parent: _navCtrl, curve: Curves.easeOutCubic);
+    _navAnim =
+        CurvedAnimation(parent: _navCtrl, curve: Curves.easeOutCubic);
     _navCtrl.forward();
 
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
+      navigationBarColor: Colors.transparent,
     ));
   }
 
@@ -65,14 +56,14 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: SColors.cream,
+      backgroundColor: SColors.bg,
       body: IndexedStack(
         index: _currentIndex,
         children: _pages,
       ),
       bottomNavigationBar: FadeTransition(
         opacity: _navAnim,
-        child: _SuitcaseNavBar(
+        child: _NavBar(
           currentIndex: _currentIndex,
           onTap: (i) => setState(() => _currentIndex = i),
         ),
@@ -81,25 +72,21 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
   }
 }
 
-// ─── Floating Pill Nav Bar ────────────────────────────────────
-class _SuitcaseNavBar extends StatelessWidget {
+class _NavBar extends StatelessWidget {
   final int currentIndex;
   final void Function(int) onTap;
 
-  const _SuitcaseNavBar({
-    required this.currentIndex,
-    required this.onTap,
-  });
+  const _NavBar({required this.currentIndex, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: SColors.cream,
+      color: SColors.bg,
       padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 12,
-        bottom: MediaQuery.of(context).padding.bottom + 12,
+        left: 20,
+        right: 20,
+        top: 10,
+        bottom: MediaQuery.of(context).padding.bottom + 10,
       ),
       child: Container(
         height: 60,
@@ -108,32 +95,20 @@ class _SuitcaseNavBar extends StatelessWidget {
           borderRadius: SRadius.xl,
           boxShadow: [
             BoxShadow(
-              color: SColors.ink.withOpacity(0.25),
-              blurRadius: 24,
-              offset: const Offset(0, 8),
+              color: SColors.ink.withOpacity(0.2),
+              blurRadius: 20,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
         child: Row(
           children: [
-            _NavItem(
-              label: 'LOOKS',
-              symbol: '◆',
-              isActive: currentIndex == 0,
-              onTap: () => onTap(0),
-            ),
-            _NavItem(
-              label: 'TRAVEL',
-              symbol: '✦',
-              isActive: currentIndex == 1,
-              onTap: () => onTap(1),
-            ),
-            _NavItem(
-              label: 'SAVED',
-              symbol: '○',
-              isActive: currentIndex == 2,
-              onTap: () => onTap(2),
-            ),
+            _NavItem(label: 'LOOKS', symbol: '◆',
+                isActive: currentIndex == 0, onTap: () => onTap(0)),
+            _NavItem(label: 'TRAVEL', symbol: '✦',
+                isActive: currentIndex == 1, onTap: () => onTap(1)),
+            _NavItem(label: 'SAVED', symbol: '○',
+                isActive: currentIndex == 2, onTap: () => onTap(2)),
           ],
         ),
       ),
@@ -148,10 +123,8 @@ class _NavItem extends StatelessWidget {
   final VoidCallback onTap;
 
   const _NavItem({
-    required this.label,
-    required this.symbol,
-    required this.isActive,
-    required this.onTap,
+    required this.label, required this.symbol,
+    required this.isActive, required this.onTap,
   });
 
   @override
@@ -172,24 +145,18 @@ class _NavItem extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              AnimatedDefaultTextStyle(
-                duration: SDuration.fast,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: isActive ? SColors.ink : SColors.warmGray,
-                ),
-                child: Text(symbol),
-              ),
+              Text(symbol,
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: isActive ? SColors.ink : SColors.warmGray)),
               const SizedBox(height: 2),
-              AnimatedDefaultTextStyle(
-                duration: SDuration.fast,
+              Text(label,
                 style: GoogleFonts.dmSans(
                   fontSize: 9,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 1.5,
                   color: isActive ? SColors.ink : SColors.warmGray,
                 ),
-                child: Text(label),
               ),
             ],
           ),
