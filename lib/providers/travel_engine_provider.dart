@@ -5,10 +5,6 @@ import '../models/trip_models.dart';
 import '../services/travel_api_service.dart';
 import '../core/constants/app_constants.dart';
 
-// ══════════════════════════════════════════════════════════════
-//  SUITCASE — Travel Engine Provider
-// ══════════════════════════════════════════════════════════════
-
 enum TravelState { idle, generating, success, error }
 
 class TravelEngineProvider with ChangeNotifier {
@@ -20,7 +16,7 @@ class TravelEngineProvider with ChangeNotifier {
   List<SavedTrip> _savedTrips = [];
   String _errorMessage = '';
   bool _loadingSaved = false;
-  Set<String> _savingIds = {};
+  final Set<String> _savingIds = {};
 
   TravelState get state => _state;
   TripItinerary? get currentTrip => _currentTrip;
@@ -29,12 +25,12 @@ class TravelEngineProvider with ChangeNotifier {
   bool get loadingSaved => _loadingSaved;
   bool isSaving(String tripId) => _savingIds.contains(tripId);
 
-  // ── Generate Trip ─────────────────────────────────────────
   Future<void> generateTrip({
     required String destination,
     required String month,
     required int durationDays,
     required String style,
+    bool sustainable = false,
   }) async {
     _state = TravelState.generating;
     _errorMessage = '';
@@ -46,6 +42,7 @@ class TravelEngineProvider with ChangeNotifier {
         month: month,
         durationDays: durationDays,
         stylePreference: style,
+        sustainable: sustainable,
       );
       _currentTrip = await _api.generateTrip(request);
       _state = TravelState.success;
@@ -57,20 +54,15 @@ class TravelEngineProvider with ChangeNotifier {
     }
   }
 
-  // ── Save Trip ─────────────────────────────────────────────
   Future<void> saveTrip(TripItinerary itinerary) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || _savingIds.contains(itinerary.tripId)) return;
-
     _savingIds.add(itinerary.tripId);
     notifyListeners();
-
     try {
       final saved = SavedTrip(
-        id: '',
-        userId: user.uid,
-        itinerary: itinerary,
-        savedAt: DateTime.now(),
+        id: '', userId: user.uid,
+        itinerary: itinerary, savedAt: DateTime.now(),
       );
       await _db
           .collection(AppConstants.usersCollection)
@@ -85,7 +77,6 @@ class TravelEngineProvider with ChangeNotifier {
     }
   }
 
-  // ── Remove Saved Trip ─────────────────────────────────────
   Future<void> removeSavedTrip(String docId) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -99,14 +90,11 @@ class TravelEngineProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Load Saved Trips ──────────────────────────────────────
   Future<void> loadSavedTrips() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-
     _loadingSaved = true;
     notifyListeners();
-
     try {
       final snap = await _db
           .collection(AppConstants.usersCollection)
