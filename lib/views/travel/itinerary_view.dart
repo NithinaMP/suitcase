@@ -550,6 +550,33 @@ class _LocationCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Time + type row
+                  // Row(
+                  //   children: [
+                  //     if (location.suggestedTime != null) ...[
+                  //       Text(
+                  //         location.suggestedTime!,
+                  //         style: STextStyles.label(10,
+                  //             color: SColors.gold,
+                  //             letterSpacing: 0.5),
+                  //       ),
+                  //       const SizedBox(width: 8),
+                  //     ],
+                  //     if (location.locationType != null)
+                  //       Container(
+                  //         padding: const EdgeInsets.symmetric(
+                  //             horizontal: 7, vertical: 2),
+                  //         decoration: BoxDecoration(
+                  //           color: SColors.cream.withOpacity(0.06),
+                  //           borderRadius: SRadius.full,
+                  //         ),
+                  //         child: Text(
+                  //           location.locationType!,
+                  //           style: STextStyles.caption(9,
+                  //               color: SColors.warmGray),
+                  //         ),
+                  //       ),
+                  //   ],
+                  // ),
                   Row(
                     children: [
                       if (location.suggestedTime != null) ...[
@@ -562,22 +589,24 @@ class _LocationCard extends StatelessWidget {
                         const SizedBox(width: 8),
                       ],
                       if (location.locationType != null)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 7, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: SColors.cream.withOpacity(0.06),
-                            borderRadius: SRadius.full,
-                          ),
-                          child: Text(
-                            location.locationType!,
-                            style: STextStyles.caption(9,
-                                color: SColors.warmGray),
+                        Flexible(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: SColors.cream.withOpacity(0.06),
+                              borderRadius: SRadius.full,
+                            ),
+                            child: Text(
+                              location.locationType!,
+                              style: STextStyles.caption(9,
+                                  color: SColors.warmGray),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ),
                     ],
                   ),
-
                   const SizedBox(height: 4),
 
                   // Place name

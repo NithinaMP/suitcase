@@ -34,14 +34,22 @@ class _SplashScreenState extends State<SplashScreen>
       statusBarIconBrightness: Brightness.dark,
     ));
 
+    // _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2800));
+    //
+    // _markFade  = _curve(0.00, 0.30);
+    // _markSlide = Tween<double>(begin: 32, end: 0).animate(
+    //     CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.35, curve: Curves.easeOutCubic)));
+    // _wordFade  = _curve(0.28, 0.55);
+    // _tagFade   = _curve(0.48, 0.72);
+    // _btnFade   = _curve(0.68, 1.00);
     _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 2800));
 
-    _markFade  = _curve(0.00, 0.30);
+    _markFade  = _curve(0.0, 0.3);
     _markSlide = Tween<double>(begin: 32, end: 0).animate(
         CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.35, curve: Curves.easeOutCubic)));
     _wordFade  = _curve(0.28, 0.55);
     _tagFade   = _curve(0.48, 0.72);
-    _btnFade   = _curve(0.68, 1.00);
+    _btnFade   = _curve(0.68, 1.0);
 
     _ctrl.forward();
   }

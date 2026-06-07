@@ -30,7 +30,9 @@ const List<String> _kDestinationSuggestions = [
 ];
 
 class HomeView extends StatefulWidget {
-  const HomeView({Key? key}) : super(key: key);
+  final bool insideShell;
+  const HomeView({Key? key, this.insideShell = false}) : super(key: key);
+  // const HomeView({Key? key}) : super(key: key);
 
   @override
   State<HomeView> createState() => _HomeViewState();
