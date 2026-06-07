@@ -5,10 +5,6 @@ import '../models/lookbook_models.dart';
 import '../services/api_service.dart';
 import '../core/constants/app_constants.dart';
 
-// ══════════════════════════════════════════════════════════════
-//  SUITCASE — Lookbook Provider
-// ══════════════════════════════════════════════════════════════
-
 enum LookbookState { idle, generating, success, error }
 
 class LookbookProvider with ChangeNotifier {
@@ -20,7 +16,7 @@ class LookbookProvider with ChangeNotifier {
   List<SavedLook> _savedLooks = [];
   String _errorMessage = '';
   bool _loadingSaved = false;
-  Set<String> _savingIds = {}; // tracks in-progress saves
+  Set<String> _savingIds = {};
 
   LookbookState get state => _state;
   LookbookResponse? get lookbook => _currentLookbook;
@@ -29,25 +25,23 @@ class LookbookProvider with ChangeNotifier {
   bool get loadingSaved => _loadingSaved;
   bool isSaving(String lookId) => _savingIds.contains(lookId);
 
-  // ── Generate Lookbook ─────────────────────────────────────
-  Future<void> generateLookbook({
-    required String destination,
-    required String month,
-    required String style,
-    int lookCount = 3,
+  // ── Prompt-based generation ───────────────────────────────
+  // Parses free-text prompt via backend, returns lookbook
+  Future<void> generateFromPrompt({
+    required String prompt,
+    bool sustainable = false,
   }) async {
     _state = LookbookState.generating;
     _errorMessage = '';
     notifyListeners();
 
     try {
-      final request = LookRequest(
-        destination: destination,
-        month: month,
-        stylePreference: style,
-        lookCount: lookCount,
-      );
-      _currentLookbook = await _api.generateLookbook(request);
+      final body = {
+        'prompt': prompt,
+        'sustainable': sustainable,
+        'look_count': 4,
+      };
+      _currentLookbook = await _api.generateFromPrompt(body);
       _state = LookbookState.success;
     } catch (e) {
       _errorMessage = e is ApiException
@@ -81,41 +75,32 @@ class LookbookProvider with ChangeNotifier {
           .doc(user.uid)
           .collection(AppConstants.savedLooksCollection)
           .add(saved.toFirestore());
-
-      // Refresh saved list
       await loadSavedLooks();
     } catch (_) {
-      // silently fail, UI shows toast
     } finally {
       _savingIds.remove(look.lookId);
       notifyListeners();
     }
   }
 
-  // ── Remove Saved Look ─────────────────────────────────────
   Future<void> removeSavedLook(String docId) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-
     await _db
         .collection(AppConstants.usersCollection)
         .doc(user.uid)
         .collection(AppConstants.savedLooksCollection)
         .doc(docId)
         .delete();
-
     _savedLooks.removeWhere((s) => s.id == docId);
     notifyListeners();
   }
 
-  // ── Load Saved Looks ──────────────────────────────────────
   Future<void> loadSavedLooks() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-
     _loadingSaved = true;
     notifyListeners();
-
     try {
       final snapshot = await _db
           .collection(AppConstants.usersCollection)
@@ -123,7 +108,6 @@ class LookbookProvider with ChangeNotifier {
           .collection(AppConstants.savedLooksCollection)
           .orderBy('saved_at', descending: true)
           .get();
-
       _savedLooks = snapshot.docs
           .map((d) => SavedLook.fromFirestore(d.data(), d.id))
           .toList();
@@ -135,10 +119,8 @@ class LookbookProvider with ChangeNotifier {
     }
   }
 
-  // ── Check if look is already saved ───────────────────────
-  bool isLookSaved(String lookId) {
-    return _savedLooks.any((s) => s.look.lookId == lookId);
-  }
+  bool isLookSaved(String lookId) =>
+      _savedLooks.any((s) => s.look.lookId == lookId);
 
   void resetState() {
     _currentLookbook = null;
