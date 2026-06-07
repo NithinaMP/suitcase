@@ -3,16 +3,16 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../shared/widgets.dart';
-import '../../core/constants/app_theme.dart';
 import '../../providers/lookbook_provider.dart';
+import '../../providers/travel_engine_provider.dart';
 import '../../models/lookbook_models.dart';
+import '../../models/trip_models.dart';
 
 // ══════════════════════════════════════════════════════════════
-//  PAGE 5 — Saved Looks
-//  Design: Dark editorial masonry-style grid
-//  Each card: full-bleed image + overlay gradient text
-//  Long press → delete confirmation
-//  Pull to refresh
+//  SAVED VIEW v2 — Light theme
+//  Two sections: Saved Looks + Saved Trips
+//  Pinterest-style grid for looks
+//  Trip cards as horizontal scroll
 // ══════════════════════════════════════════════════════════════
 
 class SavedView extends StatefulWidget {
@@ -24,179 +24,281 @@ class SavedView extends StatefulWidget {
 
 class _SavedViewState extends State<SavedView>
     with SingleTickerProviderStateMixin {
-  late AnimationController _headerCtrl;
-  late Animation<double> _headerAnim;
+  late AnimationController _ctrl;
+  late Animation<double> _anim;
 
   @override
   void initState() {
     super.initState();
-    _headerCtrl = AnimationController(
+    _ctrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 700));
-    _headerAnim =
-        CurvedAnimation(parent: _headerCtrl, curve: Curves.easeOutCubic);
-    _headerCtrl.forward();
-
+    _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
+    _ctrl.forward();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<LookbookProvider>().loadSavedLooks();
+      context.read<TravelEngineProvider>().loadSavedTrips();
     });
   }
 
   @override
   void dispose() {
-    _headerCtrl.dispose();
+    _ctrl.dispose();
     super.dispose();
   }
 
   Future<void> _refresh() async {
     await context.read<LookbookProvider>().loadSavedLooks();
-  }
-
-  void _confirmDelete(BuildContext context, SavedLook saved) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _DeleteSheet(
-        look: saved,
-        onDelete: () {
-          context.read<LookbookProvider>().removeSavedLook(saved.id);
-          Navigator.pop(context);
-          showSToast(context, 'Look removed.');
-        },
-      ),
-    );
+    await context.read<TravelEngineProvider>().loadSavedTrips();
   }
 
   @override
   Widget build(BuildContext context) {
-    final provider = context.watch<LookbookProvider>();
-    final looks = provider.savedLooks;
+    final lookProv  = context.watch<LookbookProvider>();
+    final tripProv  = context.watch<TravelEngineProvider>();
+    final looks     = lookProv.savedLooks;
+    final trips     = tripProv.savedTrips;
+    final isLoading = lookProv.loadingSaved || tripProv.loadingSaved;
 
     return Scaffold(
-      backgroundColor: SColors.ink,
+      backgroundColor: SColors.bg,
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Header ─────────────────────────────
-            AnimatedBuilder(
-              animation: _headerAnim,
-              builder: (_, __) => Opacity(
-                opacity: _headerAnim.value,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SBackButton(color: SColors.cream),
-                          const SizedBox(height: 20),
-                          Text(
-                            'Your\nLookbook.',
-                            style: GoogleFonts.cormorantGaramond(
-                              fontSize: 36,
-                              fontWeight: FontWeight.w600,
-                              color: SColors.cream,
-                              height: 1.1,
+        child: FadeTransition(
+          opacity: _anim,
+          child: RefreshIndicator(
+            onRefresh: _refresh,
+            color: SColors.gold,
+            backgroundColor: Colors.white,
+            child: CustomScrollView(
+              slivers: [
+                // ── Header ─────────────────────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Your\nCollection.',
+                              style: GoogleFonts.cormorantGaramond(
+                                fontSize: 34,
+                                fontWeight: FontWeight.w600,
+                                color: SColors.ink,
+                                height: 1.1,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (looks.isNotEmpty || trips.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: SColors.goldLight,
+                              borderRadius: SRadius.full,
+                            ),
+                            child: Text(
+                              '${looks.length + trips.length} saved',
+                              style: STextStyles.label(11,
+                                  color: SColors.goldDark, letterSpacing: 0.5),
                             ),
                           ),
-                        ],
-                      ),
-                      // Count badge
-                      if (looks.isNotEmpty)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: SColors.gold.withOpacity(0.15),
-                            borderRadius: SRadius.full,
-                          ),
-                          child: Text(
-                            '${looks.length} ${looks.length == 1 ? 'look' : 'looks'}',
-                            style: STextStyles.label(12,
-                                color: SColors.gold, letterSpacing: 0.5),
-                          ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ),
 
-            const SizedBox(height: 28),
+                if (isLoading) ...[
+                  SliverToBoxAdapter(child: _GridShimmer()),
+                ] else if (looks.isEmpty && trips.isEmpty) ...[
+                  SliverFillRemaining(child: _EmptyState()),
+                ] else ...[
 
-            // ── Content ────────────────────────────
-            Expanded(
-              child: provider.loadingSaved
-                  ? const _SavedShimmer()
-                  : looks.isEmpty
-                  ? const _EmptyState()
-                  : RefreshIndicator(
-                onRefresh: _refresh,
-                color: SColors.gold,
-                backgroundColor: SColors.inkSoft,
-                child: _SavedGrid(
-                  looks: looks,
-                  onLongPress: (s) => _confirmDelete(context, s),
-                ),
-              ),
+                  // ── Saved Trips ───────────────────────
+                  if (trips.isNotEmpty) ...[
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+                        child: Text('TRIPS',
+                            style: STextStyles.label(10,
+                                color: SColors.warmGray, letterSpacing: 2.5)),
+                      ),
+                    ),
+                    SliverToBoxAdapter(
+                      child: SizedBox(
+                        height: 140,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          itemCount: trips.length,
+                          separatorBuilder: (_, __) =>
+                          const SizedBox(width: 12),
+                          itemBuilder: (_, i) => _TripCard(
+                            trip: trips[i],
+                            onDelete: () {
+                              context.read<TravelEngineProvider>()
+                                  .removeSavedTrip(trips[i].id);
+                              showSToast(context, 'Trip removed.');
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SliverToBoxAdapter(child: SizedBox(height: 28)),
+                  ],
+
+                  // ── Saved Looks ───────────────────────
+                  if (looks.isNotEmpty) ...[
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+                        child: Text('LOOKS',
+                            style: STextStyles.label(10,
+                                color: SColors.warmGray, letterSpacing: 2.5)),
+                      ),
+                    ),
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      sliver: SliverGrid(
+                        gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                          childAspectRatio: 0.68,
+                        ),
+                        delegate: SliverChildBuilderDelegate(
+                              (_, i) => _LookCard(
+                            saved: looks[i],
+                            index: i,
+                            onDelete: () {
+                              context.read<LookbookProvider>()
+                                  .removeSavedLook(looks[i].id);
+                              showSToast(context, 'Look removed.');
+                            },
+                          ),
+                          childCount: looks.length,
+                        ),
+                      ),
+                    ),
+                  ],
+
+                  const SliverToBoxAdapter(child: SizedBox(height: 40)),
+                ],
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-// ─── Saved Grid ───────────────────────────────────────────────
-class _SavedGrid extends StatelessWidget {
-  final List<SavedLook> looks;
-  final void Function(SavedLook) onLongPress;
-
-  const _SavedGrid({required this.looks, required this.onLongPress});
+// ─── Trip Card ────────────────────────────────────────────────
+class _TripCard extends StatelessWidget {
+  final SavedTrip trip;
+  final VoidCallback onDelete;
+  const _TripCard({required this.trip, required this.onDelete});
 
   @override
   Widget build(BuildContext context) {
-    return GridView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 0.68,
+    final it = trip.itinerary;
+    final firstImg = it.days.isNotEmpty &&
+        it.days[0].visualAssets.isNotEmpty
+        ? it.days[0].visualAssets[0]
+        : null;
+
+    return GestureDetector(
+      onLongPress: onDelete,
+      child: Container(
+        width: 200,
+        decoration: BoxDecoration(
+          borderRadius: SRadius.lg,
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: SColors.ink.withOpacity(0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: SRadius.lg,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              firstImg != null
+                  ? CachedNetworkImage(
+                  imageUrl: firstImg, fit: BoxFit.cover)
+                  : Container(color: SColors.cardSurface),
+              // Gradient
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.transparent,
+                        Colors.black.withOpacity(0.65)],
+                      stops: const [0.4, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+              // Info
+              Positioned(
+                bottom: 12, left: 12, right: 12,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(it.destination.toUpperCase(),
+                        style: STextStyles.label(12,
+                            color: Colors.white, letterSpacing: 2)),
+                    Text('${it.durationDays} days · ${it.month}',
+                        style: STextStyles.caption(10)
+                            .copyWith(color: Colors.white60)),
+                  ],
+                ),
+              ),
+              // Days badge
+              Positioned(
+                top: 10, right: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: SColors.gold.withOpacity(0.85),
+                    borderRadius: SRadius.full,
+                  ),
+                  child: Text('${it.durationDays}D',
+                      style: STextStyles.label(9,
+                          color: Colors.white, letterSpacing: 0.5)),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
-      itemCount: looks.length,
-      itemBuilder: (_, i) {
-        final saved = looks[i];
-        return _SavedCard(
-          saved: saved,
-          index: i,
-          onLongPress: () => onLongPress(saved),
-        );
-      },
     );
   }
 }
 
-// ─── Saved Card ───────────────────────────────────────────────
-class _SavedCard extends StatefulWidget {
+// ─── Look Card ────────────────────────────────────────────────
+class _LookCard extends StatefulWidget {
   final SavedLook saved;
   final int index;
-  final VoidCallback onLongPress;
-
-  const _SavedCard({
-    required this.saved,
-    required this.index,
-    required this.onLongPress,
-  });
+  final VoidCallback onDelete;
+  const _LookCard(
+      {required this.saved, required this.index, required this.onDelete});
 
   @override
-  State<_SavedCard> createState() => _SavedCardState();
+  State<_LookCard> createState() => _LookCardState();
 }
 
-class _SavedCardState extends State<_SavedCard>
+class _LookCardState extends State<_LookCard>
     with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _anim;
@@ -207,18 +309,13 @@ class _SavedCardState extends State<_SavedCard>
     _ctrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 500));
     _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
-
-    // Staggered entry
-    Future.delayed(Duration(milliseconds: widget.index * 80), () {
+    Future.delayed(Duration(milliseconds: widget.index * 70), () {
       if (mounted) _ctrl.forward();
     });
   }
 
   @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
+  void dispose() { _ctrl.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
@@ -233,86 +330,65 @@ class _SavedCardState extends State<_SavedCard>
         child: Transform.translate(
           offset: Offset(0, 20 * (1 - _anim.value)),
           child: GestureDetector(
-            onLongPress: widget.onLongPress,
+            onLongPress: widget.onDelete,
             child: ClipRRect(
               borderRadius: SRadius.lg,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  // Image
                   imageUrl != null
                       ? CachedNetworkImage(
-                    imageUrl: imageUrl,
-                    fit: BoxFit.cover,
+                    imageUrl: imageUrl, fit: BoxFit.cover,
                     placeholder: (_, __) =>
                         Container(color: SColors.cardSurface),
-                    errorWidget: (_, __, ___) =>
-                        Container(color: SColors.cardSurface),
                   )
-                      : Container(
-                    color: SColors.cardSurface,
-                    child: Icon(Icons.image_outlined,
-                        color: SColors.warmGray, size: 28),
-                  ),
+                      : Container(color: SColors.cardSurface),
 
-                  // Gradient overlay
+                  // Gradient
                   Positioned.fill(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black.withOpacity(0.15),
-                            Colors.black.withOpacity(0.75),
-                          ],
-                          stops: const [0.4, 0.65, 1.0],
+                          colors: [Colors.transparent,
+                            Colors.black.withOpacity(0.7)],
+                          stops: const [0.45, 1.0],
                         ),
                       ),
                     ),
                   ),
 
-                  // Text overlay
+                  // Text
                   Positioned(
-                    bottom: 14,
-                    left: 14,
-                    right: 14,
+                    bottom: 12, left: 12, right: 12,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          look.fashionProfile.styleVibe,
+                        Text(look.fashionProfile.styleVibe,
                           style: GoogleFonts.cormorantGaramond(
-                            fontSize: 16,
+                            fontSize: 15,
                             fontWeight: FontWeight.w600,
-                            color: SColors.cream,
+                            color: Colors.white,
                             height: 1.2,
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          widget.saved.destination,
-                          style: STextStyles.caption(11,
-                              color: SColors.cream.withOpacity(0.7)),
-                        ),
+                        Text(widget.saved.destination,
+                            style: STextStyles.caption(10)
+                                .copyWith(color: Colors.white60)),
                       ],
                     ),
                   ),
 
-                  // Gold accent dot top-right
+                  // Gold dot
                   Positioned(
-                    top: 12,
-                    right: 12,
+                    top: 10, right: 10,
                     child: Container(
-                      width: 8,
-                      height: 8,
+                      width: 8, height: 8,
                       decoration: BoxDecoration(
-                        color: SColors.gold,
-                        shape: BoxShape.circle,
-                      ),
+                          color: SColors.gold, shape: BoxShape.circle),
                     ),
                   ),
                 ],
@@ -327,8 +403,6 @@ class _SavedCardState extends State<_SavedCard>
 
 // ─── Empty State ──────────────────────────────────────────────
 class _EmptyState extends StatelessWidget {
-  const _EmptyState();
-
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -337,26 +411,21 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              '✦',
-              style: TextStyle(
-                  fontSize: 36, color: SColors.warmGray.withOpacity(0.4)),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'No saved looks yet.',
+            Text('✦',
+                style: TextStyle(
+                    fontSize: 36,
+                    color: SColors.warmGray.withOpacity(0.3))),
+            const SizedBox(height: 20),
+            Text('Nothing saved yet.',
               style: GoogleFonts.cormorantGaramond(
-                fontSize: 26,
-                fontWeight: FontWeight.w500,
-                color: SColors.cream.withOpacity(0.7),
-              ),
+                  fontSize: 26, fontWeight: FontWeight.w500,
+                  color: SColors.ink.withOpacity(0.6)),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Text(
-              'Generate a lookbook and save the looks that speak to you.',
-              style:
-              STextStyles.body(14, color: SColors.warmGray.withOpacity(0.6)),
+              'Generate a lookbook or plan a trip and save the ones you love.',
+              style: STextStyles.body(14, color: SColors.warmGray),
               textAlign: TextAlign.center,
             ),
           ],
@@ -366,86 +435,22 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-// ─── Delete Sheet ─────────────────────────────────────────────
-class _DeleteSheet extends StatelessWidget {
-  final SavedLook look;
-  final VoidCallback onDelete;
-
-  const _DeleteSheet({required this.look, required this.onDelete});
-
+class _GridShimmer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1B17),
-        borderRadius: SRadius.xl,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Remove this look?',
-            style: GoogleFonts.cormorantGaramond(
-              fontSize: 24,
-              fontWeight: FontWeight.w600,
-              color: SColors.cream,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            look.look.fashionProfile.styleVibe,
-            style: STextStyles.displayItalic(14, color: SColors.warmGray),
-          ),
-          const SizedBox(height: 28),
-          Row(
-            children: [
-              Expanded(
-                child: SButton(
-                  label: 'CANCEL',
-                  outlined: true,
-                  textColor: SColors.cream,
-                  onTap: () => Navigator.pop(context),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: SButton(
-                  label: 'REMOVE',
-                  backgroundColor: SColors.error,
-                  onTap: onDelete,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Loading shimmer for saved grid ──────────────────────────
-class _SavedShimmer extends StatelessWidget {
-  const _SavedShimmer();
-
-  @override
-  Widget build(BuildContext context) {
-    return GridView.builder(
+    return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 0.68,
-      ),
-      itemCount: 6,
-      itemBuilder: (_, __) => SShimmer(
-        width: double.infinity,
-        height: double.infinity,
-        borderRadius: BorderRadius.circular(20),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2, mainAxisSpacing: 12,
+          crossAxisSpacing: 12, childAspectRatio: 0.68,
+        ),
+        itemCount: 6,
+        itemBuilder: (_, __) => SShimmer(
+            width: double.infinity, height: double.infinity,
+            borderRadius: BorderRadius.circular(20)),
       ),
     );
   }
