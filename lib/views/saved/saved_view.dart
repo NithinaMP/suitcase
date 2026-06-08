@@ -7,6 +7,7 @@ import '../../providers/lookbook_provider.dart';
 import '../../providers/travel_engine_provider.dart';
 import '../../models/lookbook_models.dart';
 import '../../models/trip_models.dart';
+import 'saved_detail_view.dart';
 
 // ══════════════════════════════════════════════════════════════
 //  SAVED VIEW v2 — Light theme
@@ -211,6 +212,9 @@ class _TripCard extends StatelessWidget {
         : null;
 
     return GestureDetector(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => SavedTripDetail(saved: trip),
+      )),
       onLongPress: onDelete,
       child: Container(
         width: 200,
@@ -330,6 +334,9 @@ class _LookCardState extends State<_LookCard>
         child: Transform.translate(
           offset: Offset(0, 20 * (1 - _anim.value)),
           child: GestureDetector(
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => SavedLookDetail(saved: widget.saved),
+            )),
             onLongPress: widget.onDelete,
             child: ClipRRect(
               borderRadius: SRadius.lg,
