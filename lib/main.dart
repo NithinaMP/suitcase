@@ -8,7 +8,7 @@ import 'providers/travel_engine_provider.dart';
 import 'views/splash/splash_view.dart';
 import 'views/shell/app_shell.dart';
 import 'core/constants/app_theme.dart';
-import 'firebase_options.dart'; // ← uncomment after flutterfire configure
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,70 +33,93 @@ class SuitcaseApp extends StatelessWidget {
         title: 'Suitcase',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
-          scaffoldBackgroundColor: SColors.cream,
+          scaffoldBackgroundColor: SColors.bg,
           colorScheme: ColorScheme.light(
             primary: SColors.ink,
             secondary: SColors.gold,
-            surface: SColors.cream,
-            background: SColors.cream,
+            surface: SColors.bg,
+            background: SColors.bg,
           ),
           splashColor: Colors.transparent,
           highlightColor: Colors.transparent,
         ),
-        builder: (context, child) {
-          if (kIsWeb) return _WebFrame(child: child!);
-          return child!;
-        },
+        // Web: full screen, no phone frame
+        builder: kIsWeb
+            ? (context, child) => _WebLayout(child: child!)
+            : null,
         home: const _AppGate(),
       ),
     );
   }
 }
 
-// class _WebFrame extends StatelessWidget {
-//   final Widget child;
-//   const _WebFrame({required this.child});
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     final screenWidth = MediaQuery.of(context).size.width;
-//     if (screenWidth <= 500) return child;
-//     return Scaffold(
-//       backgroundColor: const Color(0xFF0E0C09),
-//       body: Center(
-//         child: Container(
-//           constraints: const BoxConstraints.expand(width: 430),
-//           decoration: BoxDecoration(
-//             color: SColors.cream,
-//             boxShadow: [
-//               BoxShadow(
-//                 color: Colors.black.withOpacity(0.4),
-//                 blurRadius: 60,
-//               ),
-//             ],
-//           ),
-//           child: ClipRect(child: child),
-//         ),
-//       ),
-//     );
-//   }
-// }
-class _WebFrame extends StatelessWidget {
+// ── Web Layout — full screen, responsive ─────────────────────
+// On mobile browser (<600px): full screen
+// On desktop browser (>600px): centered max 480px with clean bg
+// NOT a phone frame — feels like a real website
+class _WebLayout extends StatelessWidget {
   final Widget child;
-  const _WebFrame({required this.child});
+  const _WebLayout({required this.child});
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    if (screenWidth <= 500) return child;
+    final w = MediaQuery.of(context).size.width;
+    if (w < 600) return child; // mobile browser — full screen
 
+    // Desktop: centered content column, clean background
     return Scaffold(
-      backgroundColor: const Color(0xFF0E0C09),
-      body: Center(
-        child: SizedBox(
-          width: 430,
-          child: ClipRect(child: child),
-        ),
+      backgroundColor: const Color(0xFFF0EBE3),
+      body: Row(
+        children: [
+          // Left padding — decorative
+          Expanded(
+            child: Container(
+              color: const Color(0xFFF0EBE3),
+              child: Center(
+                child: Text('SUITCASE',
+                  style: TextStyle(
+                    fontSize: 11,
+                    letterSpacing: 4,
+                    color: const Color(0xFFB5895A).withOpacity(0.4),
+                    fontFamily: 'serif',
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // Center content
+          Container(
+            width: 480,
+            decoration: BoxDecoration(
+              color: SColors.bg,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 40,
+                ),
+              ],
+            ),
+            child: child,
+          ),
+          // Right padding — decorative
+          Expanded(
+            child: Container(
+              color: const Color(0xFFF0EBE3),
+              child: Center(
+                child: RotatedBox(
+                  quarterTurns: 1,
+                  child: Text('dress the journey · own the moment',
+                    style: TextStyle(
+                      fontSize: 10,
+                      letterSpacing: 3,
+                      color: const Color(0xFFB5895A).withOpacity(0.35),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -115,7 +138,7 @@ class _AppGate extends StatelessWidget {
         return const SplashScreen();
       case ap.AuthState.unknown:
         return const Scaffold(
-          backgroundColor: SColors.cream,
+          backgroundColor: SColors.bg,
           body: Center(
             child: CircularProgressIndicator(
                 color: SColors.gold, strokeWidth: 1.5),
