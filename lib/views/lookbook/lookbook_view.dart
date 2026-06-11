@@ -153,11 +153,15 @@ class _LookCardState extends State<_LookCard>
     with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _anim;
-  bool _expanded = false;
+  late PageController _imgPageCtrl;
+  int _imgIndex = 0;
+  bool _expanded = false;  // ← add this line
+
 
   @override
   void initState() {
     super.initState();
+    _imgPageCtrl = PageController();
     _ctrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 600));
     _anim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic);
@@ -168,8 +172,18 @@ class _LookCardState extends State<_LookCard>
 
   @override
   void dispose() {
+    _imgPageCtrl.dispose();
     _ctrl.dispose();
     super.dispose();
+  }
+
+  void _openFullScreen(int startIndex) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => _FullScreenGallery(
+        images: widget.look.visualAssets,
+        initialIndex: startIndex,
+      ),
+    ));
   }
 
   void _openFullDetail() {
@@ -217,29 +231,38 @@ class _LookCardState extends State<_LookCard>
                         top: Radius.circular(28)),
                     child: Stack(
                       children: [
-                        // Main photo
-                        look.visualAssets.isNotEmpty
-                            ? CachedNetworkImage(
-                          imageUrl: look.visualAssets[0],
-                          width: double.infinity,
-                          height: 340,
-                          fit: BoxFit.cover,
-                          placeholder: (_, __) => Container(
+                        // Swipeable photo PageView
+                        GestureDetector(
+                          onTap: () => _openFullScreen(_imgIndex),
+                          child: SizedBox(
                             height: 340,
-                            color: SColors.cardSurface,
+                            child: look.visualAssets.isEmpty
+                                ? Container(
+                                color: SColors.cardSurface,
+                                child: Icon(Icons.image_outlined,
+                                    color: SColors.warmGray, size: 36))
+                                : PageView.builder(
+                              controller: _imgPageCtrl,
+                              itemCount: look.visualAssets.length,
+                              onPageChanged: (i) =>
+                                  setState(() => _imgIndex = i),
+                              itemBuilder: (_, i) => CachedNetworkImage(
+                                imageUrl: look.visualAssets[i],
+                                width: double.infinity,
+                                height: 340,
+                                fit: BoxFit.cover,
+                                placeholder: (_, __) => Container(
+                                    height: 340,
+                                    color: SColors.cardSurface),
+                                errorWidget: (_, __, ___) => Container(
+                                    height: 340,
+                                    color: SColors.cardSurface,
+                                    child: Icon(Icons.image_outlined,
+                                        color: SColors.warmGray,
+                                        size: 36)),
+                              ),
+                            ),
                           ),
-                          errorWidget: (_, __, ___) => Container(
-                            height: 340,
-                            color: SColors.cardSurface,
-                            child: Icon(Icons.image_outlined,
-                                color: SColors.warmGray, size: 36),
-                          ),
-                        )
-                            : Container(
-                          height: 340,
-                          color: SColors.cardSurface,
-                          child: Icon(Icons.image_outlined,
-                              color: SColors.warmGray, size: 36),
                         ),
 
                         // Top row: occasion tag + save button
@@ -355,28 +378,28 @@ class _LookCardState extends State<_LookCard>
                             ),
                           ),
 
-                        // Extra photos strip (if multiple images)
+                        // Dot indicators (bottom right)
                         if (look.visualAssets.length > 1)
                           Positioned(
                             bottom: 14,
                             right: 14,
-                            child: Row(
-                              children: look.visualAssets
-                                  .skip(1)
-                                  .take(2)
-                                  .map((url) => Padding(
-                                padding: const EdgeInsets.only(left: 6),
-                                child: ClipRRect(
-                                  borderRadius: SRadius.sm,
-                                  child: CachedNetworkImage(
-                                    imageUrl: url,
-                                    width: 44,
-                                    height: 44,
-                                    fit: BoxFit.cover,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: List.generate(
+                                look.visualAssets.length,
+                                    (i) => AnimatedContainer(
+                                  duration: SDuration.fast,
+                                  width: 6,
+                                  height: _imgIndex == i ? 18 : 6,
+                                  margin: const EdgeInsets.only(bottom: 4),
+                                  decoration: BoxDecoration(
+                                    color: _imgIndex == i
+                                        ? Colors.white
+                                        : Colors.white.withOpacity(0.4),
+                                    borderRadius: SRadius.full,
                                   ),
                                 ),
-                              ))
-                                  .toList(),
+                              ),
                             ),
                           ),
                       ],
@@ -613,6 +636,127 @@ class _ErrorView extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─── Full Screen Gallery ──────────────────────────────────────
+class _FullScreenGallery extends StatefulWidget {
+  final List<String> images;
+  final int initialIndex;
+
+  const _FullScreenGallery({
+    required this.images,
+    required this.initialIndex,
+  });
+
+  @override
+  State<_FullScreenGallery> createState() => _FullScreenGalleryState();
+}
+
+class _FullScreenGalleryState extends State<_FullScreenGallery> {
+  late PageController _ctrl;
+  late int _current;
+
+  @override
+  void initState() {
+    super.initState();
+    _current = widget.initialIndex;
+    _ctrl = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // Swipeable full screen images
+          PageView.builder(
+            controller: _ctrl,
+            itemCount: widget.images.length,
+            onPageChanged: (i) => setState(() => _current = i),
+            itemBuilder: (_, i) => InteractiveViewer(
+              child: CachedNetworkImage(
+                imageUrl: widget.images[i],
+                fit: BoxFit.contain,
+                placeholder: (_, __) => const Center(
+                  child: CircularProgressIndicator(
+                      color: Colors.white24, strokeWidth: 1.5),
+                ),
+                errorWidget: (_, __, ___) => Icon(
+                    Icons.image_not_supported_outlined,
+                    color: Colors.white24, size: 40),
+              ),
+            ),
+          ),
+
+          // Close button
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 12,
+            left: 16,
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                width: 38, height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: SRadius.full,
+                ),
+                child: const Icon(Icons.close_rounded,
+                    color: Colors.white, size: 18),
+              ),
+            ),
+          ),
+
+          // Image counter
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 18,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.15),
+                borderRadius: SRadius.full,
+              ),
+              child: Text(
+                '${_current + 1} / ${widget.images.length}',
+                style: STextStyles.label(11,
+                    color: Colors.white, letterSpacing: 0.5),
+              ),
+            ),
+          ),
+
+          // Bottom dot indicators
+          Positioned(
+            bottom: MediaQuery.of(context).padding.bottom + 20,
+            left: 0, right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(widget.images.length, (i) =>
+                  AnimatedContainer(
+                    duration: SDuration.fast,
+                    width: _current == i ? 20 : 7,
+                    height: 7,
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    decoration: BoxDecoration(
+                      color: _current == i
+                          ? Colors.white
+                          : Colors.white.withOpacity(0.35),
+                      borderRadius: SRadius.full,
+                    ),
+                  ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

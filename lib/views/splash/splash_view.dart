@@ -246,7 +246,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                 child: AnimatedBuilder(
                   animation: _gridCtrl,
                   builder: (_, __) => GridView.builder(
-                    physics: const NeverScrollableScrollPhysics(),
+                    physics: const BouncingScrollPhysics(),
                     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
                       mainAxisSpacing: 12,

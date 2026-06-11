@@ -34,11 +34,20 @@ class _AppShellState extends State<AppShell>
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
+    // _navCtrl = AnimationController(
+    //     vsync: this, duration: const Duration(milliseconds: 600));
+    // _navAnim =
+    //     CurvedAnimation(parent: _navCtrl, curve: Curves.easeOutCubic);
+    // _navCtrl.forward();
+    // FIXED
     _navCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 600));
     _navAnim =
         CurvedAnimation(parent: _navCtrl, curve: Curves.easeOutCubic);
-    _navCtrl.forward();
+// Forward immediately — avoids nav being invisible on web first render
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _navCtrl.forward();
+    });
 
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -57,6 +66,8 @@ class _AppShellState extends State<AppShell>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: SColors.bg,
+      resizeToAvoidBottomInset: false,  // ← add this line
+
       body: IndexedStack(
         index: _currentIndex,
         children: _pages,
