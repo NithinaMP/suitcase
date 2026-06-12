@@ -50,19 +50,72 @@ class SavedLookDetail extends StatelessWidget {
           SliverToBoxAdapter(
             child: Stack(
               children: [
-                look.visualAssets.isNotEmpty
-                    ? CachedNetworkImage(
-                  imageUrl: look.visualAssets[0],
-                  width: double.infinity,
-                  height: 380,
-                  fit: BoxFit.cover,
-                )
-                    : Container(
-                  height: 380,
-                  color: SColors.cardSurface,
-                  child: Icon(Icons.image_outlined,
-                      color: SColors.warmGray, size: 40),
+                // Tappable hero image
+                GestureDetector(
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => _SavedFullScreenGallery(
+                      images: look.visualAssets,
+                      initialIndex: 0,
+                    ),
+                  )),
+                  child: look.visualAssets.isNotEmpty
+                      ? CachedNetworkImage(
+                    imageUrl: look.visualAssets[0],
+                    width: double.infinity,
+                    height: 380,
+                    fit: BoxFit.cover,
+                  )
+                      : Container(
+                    height: 380,
+                    color: SColors.cardSurface,
+                    child: Icon(Icons.image_outlined,
+                        color: SColors.warmGray, size: 40),
+                  ),
                 ),
+
+// Extra image thumbnails — tappable
+                if (look.visualAssets.length > 1)
+                  Positioned(
+                    bottom: 16, right: 16,
+                    child: Row(
+                      children: look.visualAssets.asMap().entries.skip(1).take(2)
+                          .map((e) => GestureDetector(
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => _SavedFullScreenGallery(
+                              images: look.visualAssets,
+                              initialIndex: e.key,
+                            ),
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: ClipRRect(
+                            borderRadius: SRadius.sm,
+                            child: CachedNetworkImage(
+                              imageUrl: e.value,
+                              width: 56, height: 56,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                      ))
+                          .toList(),
+                    ),
+                  ),
+                // look.visualAssets.isNotEmpty
+                //     ? CachedNetworkImage(
+                //   imageUrl: look.visualAssets[0],
+                //   width: double.infinity,
+                //   height: 380,
+                //   fit: BoxFit.cover,
+                // )
+                //     : Container(
+                //   height: 380,
+                //   color: SColors.cardSurface,
+                //   child: Icon(Icons.image_outlined,
+                //       color: SColors.warmGray, size: 40),
+                // ),
 
                 // Golden hour badge
                 if (look.goldenHourTime != null)
@@ -778,6 +831,117 @@ class _DetailSection extends StatelessWidget {
         Text(content,
             style: STextStyles.body(14, color: SColors.inkSoft)),
       ],
+    );
+  }
+}
+
+class _SavedFullScreenGallery extends StatefulWidget {
+  final List<String> images;
+  final int initialIndex;
+  const _SavedFullScreenGallery({
+    required this.images, required this.initialIndex});
+
+  @override
+  State<_SavedFullScreenGallery> createState() =>
+      _SavedFullScreenGalleryState();
+}
+
+class _SavedFullScreenGalleryState extends State<_SavedFullScreenGallery> {
+  late PageController _ctrl;
+  late int _current;
+
+  @override
+  void initState() {
+    super.initState();
+    _current = widget.initialIndex;
+    _ctrl = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _ctrl,
+            itemCount: widget.images.length,
+            onPageChanged: (i) => setState(() => _current = i),
+            itemBuilder: (_, i) => InteractiveViewer(
+              child: CachedNetworkImage(
+                imageUrl: widget.images[i],
+                fit: BoxFit.contain,
+                placeholder: (_, __) => const Center(
+                    child: CircularProgressIndicator(
+                        color: Colors.white24, strokeWidth: 1.5)),
+              ),
+            ),
+          ),
+          // Close
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 12,
+            left: 16,
+            child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                width: 38, height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: SRadius.full,
+                ),
+                child: const Icon(Icons.close_rounded,
+                    color: Colors.white, size: 18),
+              ),
+            ),
+          ),
+          // Counter
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 18,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.15),
+                borderRadius: SRadius.full,
+              ),
+              child: Text(
+                '${_current + 1} / ${widget.images.length}',
+                style: STextStyles.label(11,
+                    color: Colors.white, letterSpacing: 0.5),
+              ),
+            ),
+          ),
+          // Dots
+          Positioned(
+            bottom: MediaQuery.of(context).padding.bottom + 20,
+            left: 0, right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(widget.images.length, (i) =>
+                  AnimatedContainer(
+                    duration: SDuration.fast,
+                    width: _current == i ? 20 : 7,
+                    height: 7,
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    decoration: BoxDecoration(
+                      color: _current == i
+                          ? Colors.white
+                          : Colors.white.withOpacity(0.35),
+                      borderRadius: SRadius.full,
+                    ),
+                  ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

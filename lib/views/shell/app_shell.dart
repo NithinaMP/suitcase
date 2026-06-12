@@ -89,18 +89,39 @@ class _AppShellState extends State<AppShell> {
     }
 
     // Mobile
+    // return Scaffold(
+    //   backgroundColor: SColors.bg,
+    //   resizeToAvoidBottomInset: false,
+    //   body: IndexedStack(
+    //     index: _currentIndex,
+    //     children: _pages,
+    //   ),
+    //   bottomNavigationBar: _BottomNav(
+    //     currentIndex: _currentIndex,
+    //     labels: _labels,
+    //     symbols: _symbols,
+    //     onTap: (i) => setState(() => _currentIndex = i),
+    //   ),
+    // );
+
+
+    // Mobile
     return Scaffold(
       backgroundColor: SColors.bg,
       resizeToAvoidBottomInset: false,
+      extendBody: false,
       body: IndexedStack(
         index: _currentIndex,
         children: _pages,
       ),
-      bottomNavigationBar: _BottomNav(
-        currentIndex: _currentIndex,
-        labels: _labels,
-        symbols: _symbols,
-        onTap: (i) => setState(() => _currentIndex = i),
+      bottomNavigationBar: Material(
+        color: Colors.transparent,
+        child: _BottomNav(
+          currentIndex: _currentIndex,
+          labels: _labels,
+          symbols: _symbols,
+          onTap: (i) => setState(() => _currentIndex = i),
+        ),
       ),
     );
   }
