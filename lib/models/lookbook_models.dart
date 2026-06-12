@@ -12,7 +12,7 @@ class LookRequest {
     required this.destination,
     required this.month,
     required this.stylePreference,
-    this.lookCount = 4,
+    this.lookCount = 6,
   });
 
   Map<String, dynamic> toJson() => {

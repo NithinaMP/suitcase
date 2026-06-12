@@ -43,7 +43,7 @@ class _AppShellState extends State<AppShell> {
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
-      navigationBarColor: Colors.transparent,
+      systemNavigationBarColor: Colors.transparent,
     ));
   }
 

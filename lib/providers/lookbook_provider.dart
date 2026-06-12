@@ -39,7 +39,7 @@ class LookbookProvider with ChangeNotifier {
       final body = {
         'prompt': prompt,
         'sustainable': sustainable,
-        'look_count': 4,
+        'look_count': 6,
       };
       _currentLookbook = await _api.generateFromPrompt(body);
       _state = LookbookState.success;

@@ -131,20 +131,36 @@ class LookbookView extends StatelessWidget {
             )
           else
           // Desktop/Tablet: masonry grid
+          //   SliverPadding(
+          //     padding: EdgeInsets.symmetric(horizontal: hPad),
+          //     sliver: SliverMasonryGrid.count(
+          //       crossAxisCount: cols,
+          //       mainAxisSpacing: 20,
+          //       crossAxisSpacing: 20,
+          //       childDelegate: SliverChildBuilderDelegate(
+          //             (context, i) => _LookCard(
+          //           look: lookbook.looks[i],
+          //           index: i,
+          //           destination: lookbook.destination,
+          //           month: lookbook.month,
+          //         ),
+          //         childCount: lookbook.looks.length,
+          //       ),
+          //     ),
+          //   ),
+
             SliverPadding(
               padding: EdgeInsets.symmetric(horizontal: hPad),
               sliver: SliverMasonryGrid.count(
                 crossAxisCount: cols,
                 mainAxisSpacing: 20,
                 crossAxisSpacing: 20,
-                childDelegate: SliverChildBuilderDelegate(
-                      (context, i) => _LookCard(
-                    look: lookbook.looks[i],
-                    index: i,
-                    destination: lookbook.destination,
-                    month: lookbook.month,
-                  ),
-                  childCount: lookbook.looks.length,
+                childCount: lookbook.looks.length,
+                itemBuilder: (context, i) => _LookCard(
+                  look: lookbook.looks[i],
+                  index: i,
+                  destination: lookbook.destination,
+                  month: lookbook.month,
                 ),
               ),
             ),
