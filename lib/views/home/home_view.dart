@@ -199,102 +199,106 @@ class _DesktopLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hPad = Responsive.horizontalPadding(context);
-    final w    = MediaQuery.of(context).size.width;
+    final w = MediaQuery.of(context).size.width;
 
     return SingleChildScrollView(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(hPad, 60, hPad, 60),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── LEFT: Input ──────────────────────────────
-            Expanded(
-              flex: 5,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Dress the journey.',
-                    style: GoogleFonts.cormorantGaramond(
-                      fontSize: w > 1200 ? 58 : 46,
-                      fontWeight: FontWeight.w600,
-                      color: SColors.ink,
-                      height: 1.05,
-                    ),
-                  ),
-                  Text('Own the moment.',
-                    style: GoogleFonts.cormorantGaramond(
-                      fontSize: w > 1200 ? 58 : 46,
-                      fontWeight: FontWeight.w300,
-                      fontStyle: FontStyle.italic,
-                      color: SColors.warmGray,
-                      height: 1.05,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    'Describe your trip — we\'ll curate outfits, '
-                        'locations, and golden hour windows.',
-                    style: STextStyles.body(16, color: SColors.warmGray),
-                  ),
-                  const SizedBox(height: 40),
-                  _PromptBar(
-                    controller: promptCtrl,
-                    onChanged: onPromptChanged,
-                    onSubmit: onGenerate,
-                  ),
-                  const SizedBox(height: 16),
-                  _SustainableToggle(
-                    value: sustainableMode,
-                    onChanged: onSustainableToggle,
-                  ),
-                  const SizedBox(height: 28),
-                  SButton(
-                    label: 'GENERATE MY LOOKS',
-                    onTap: hasPrompt ? onGenerate : null,
-                    height: 56,
-                  ),
-                  const SizedBox(height: 44),
-                  Text('TRY THESE',
-                      style: STextStyles.label(10,
-                          color: SColors.warmGray, letterSpacing: 2.5)),
-                  const SizedBox(height: 14),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: suggestions.map((s) =>
-                        GestureDetector(
-                          onTap: () {
-                            promptCtrl.text = s;
-                            onPromptChanged(s);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: SColors.cardSurface,
-                              borderRadius: SRadius.full,
-                              border: Border.all(color: SColors.lightDivider),
-                            ),
-                            child: Text(s,
-                                style: STextStyles.body(12,
-                                    color: SColors.inkSoft)),
-                          ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1200),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(40, 60, 40, 60),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── LEFT: Input ──────────────────────────────
+                Expanded(
+                  flex: 5,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Dress the journey.',
+                        style: GoogleFonts.cormorantGaramond(
+                          fontSize: w > 1200 ? 58 : 46,
+                          fontWeight: FontWeight.w600,
+                          color: SColors.ink,
+                          height: 1.05,
                         ),
-                    ).toList(),
+                      ),
+                      Text('Own the moment.',
+                        style: GoogleFonts.cormorantGaramond(
+                          fontSize: w > 1200 ? 58 : 46,
+                          fontWeight: FontWeight.w300,
+                          fontStyle: FontStyle.italic,
+                          color: SColors.warmGray,
+                          height: 1.05,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        'Describe your trip — we\'ll curate outfits, '
+                            'locations, and golden hour windows.',
+                        style: STextStyles.body(16, color: SColors.warmGray),
+                      ),
+                      const SizedBox(height: 40),
+                      _PromptBar(
+                        controller: promptCtrl,
+                        onChanged: onPromptChanged,
+                        onSubmit: onGenerate,
+                      ),
+                      const SizedBox(height: 16),
+                      _SustainableToggle(
+                        value: sustainableMode,
+                        onChanged: onSustainableToggle,
+                      ),
+                      const SizedBox(height: 28),
+                      SButton(
+                        label: 'GENERATE MY LOOKS',
+                        onTap: hasPrompt ? onGenerate : null,
+                        height: 56,
+                      ),
+                      const SizedBox(height: 44),
+                      Text('TRY THESE',
+                          style: STextStyles.label(10,
+                              color: SColors.warmGray, letterSpacing: 2.5)),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: suggestions.map((s) =>
+                            GestureDetector(
+                              onTap: () {
+                                promptCtrl.text = s;
+                                onPromptChanged(s);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: SColors.cardSurface,
+                                  borderRadius: SRadius.full,
+                                  border: Border.all(color: SColors.lightDivider),
+                                ),
+                                child: Text(s,
+                                    style: STextStyles.body(12,
+                                        color: SColors.inkSoft)),
+                              ),
+                            ),
+                        ).toList(),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
+                ),
 
-            const SizedBox(width: 80),
+                const SizedBox(width: 80),
 
-            // ── RIGHT: Decorative panel ──────────────────
-            Expanded(
-              flex: 4,
-              child: _RightPanel(),
+                // ── RIGHT: Decorative panel ──────────────────
+                Expanded(
+                  flex: 4,
+                  child: _RightPanel(),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
