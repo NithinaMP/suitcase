@@ -465,6 +465,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_theme.dart';
 import '../../core/constants/responsive.dart';
 import '../../providers/auth_provider.dart' as ap;
+import '../account/account_view.dart';
 import '../home/home_view.dart';
 import '../travel/trip_setup_view.dart';
 import '../saved/saved_view.dart';
@@ -629,8 +630,13 @@ class _ProfileMenuState extends State<_ProfileMenu> {
                         padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Account', style: STextStyles.label(12,
-                                  color: SColors.ink, letterSpacing: 0.5)),
+                              GestureDetector(
+                                child: Text('Account', style: STextStyles.label(12,
+                                    color: SColors.ink, letterSpacing: 0.5)),
+                                onTap: (){
+                                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccountView()));
+                                } ,
+                              ),
                               const SizedBox(height: 4),
                               Text(widget.auth.user?.email ?? '',
                                   style: STextStyles.caption(12),
