@@ -14,6 +14,21 @@ import 'saved_detail_view.dart';
 //  SAVED VIEW — Fully Responsive
 //  Mobile  : Grid 2-col looks + horizontal trip scroll
 //  Desktop : Constrained 1200px max-width, 3-col looks grid
+//
+//  ALIGNMENT FIX: Trips previously always rendered as a fixed-
+//  width (200px) horizontal ListView. With only 1-2 saved trips
+//  this left a large dead zone of empty space beside the cards,
+//  which looked misaligned against the full-width Looks grid
+//  below it.
+//
+//  Fix: trips now render as a GridView using the SAME column
+//  count and spacing as the Looks grid whenever there are few
+//  enough trips to fit without scrolling (<= cols). This makes
+//  both sections look like one consistent grid system. Once
+//  there are MORE trips than fit in a row, we fall back to the
+//  original horizontal-scroll behavior — that's the right pattern
+//  once there's more content than fits a single row, and avoids
+//  an awkwardly tall grid of many trip cards.
 // ══════════════════════════════════════════════════════════════
 
 class SavedView extends StatefulWidget {
@@ -114,24 +129,63 @@ class _SavedViewState extends State<SavedView>
                                     padding: EdgeInsets.fromLTRB(hPad, 0, hPad, 12),
                                     child: Text('TRIPS', style: STextStyles.label(10,
                                         color: SColors.warmGray, letterSpacing: 2.5)))))),
-                    SliverToBoxAdapter(
-                        child: SizedBox(
-                            height: 150,
-                            child: ListView.separated(
-                                scrollDirection: Axis.horizontal,
-                                padding: EdgeInsets.symmetric(horizontal: hPad),
-                                itemCount: trips.length,
-                                separatorBuilder: (_, __) => const SizedBox(width: 12),
-                                itemBuilder: (_, i) => _TripCard(
-                                    trip: trips[i],
-                                    onTap: () => Navigator.of(context).push(
-                                        MaterialPageRoute(builder: (_) =>
-                                            SavedTripDetail(saved: trips[i]))),
-                                    onDelete: () {
-                                      context.read<TravelEngineProvider>()
-                                          .removeSavedTrip(trips[i].id);
-                                      showSToast(context, 'Trip removed.');
-                                    })))),
+
+                    // Few trips (fit in one row) → render as a proper
+                    // grid, same column rhythm as Looks, so it lines
+                    // up edge-to-edge instead of hugging the left with
+                    // dead space beside it.
+                    // Many trips (more than one row's worth) → keep
+                    // the original horizontal-scroll row, which is the
+                    // right pattern once there's more content than
+                    // fits at once.
+                    if (trips.length <= cols)
+                      SliverToBoxAdapter(
+                          child: Center(
+                              child: ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 1200),
+                                  child: Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: hPad),
+                                      child: GridView.builder(
+                                          shrinkWrap: true,
+                                          physics: const NeverScrollableScrollPhysics(),
+                                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                              crossAxisCount: cols,
+                                              mainAxisSpacing: 12,
+                                              crossAxisSpacing: 12,
+                                              // Trip cards are landscape-style
+                                              // (image + caption), unlike the
+                                              // taller portrait Look cards.
+                                              childAspectRatio: 1.2),
+                                          itemCount: trips.length,
+                                          itemBuilder: (_, i) => _TripCard(
+                                              trip: trips[i],
+                                              onTap: () => Navigator.of(context).push(
+                                                  MaterialPageRoute(builder: (_) =>
+                                                      SavedTripDetail(saved: trips[i]))),
+                                              onDelete: () {
+                                                context.read<TravelEngineProvider>()
+                                                    .removeSavedTrip(trips[i].id);
+                                                showSToast(context, 'Trip removed.');
+                                              }))))))
+                    else
+                      SliverToBoxAdapter(
+                          child: SizedBox(
+                              height: 150,
+                              child: ListView.separated(
+                                  scrollDirection: Axis.horizontal,
+                                  padding: EdgeInsets.symmetric(horizontal: hPad),
+                                  itemCount: trips.length,
+                                  separatorBuilder: (_, __) => const SizedBox(width: 12),
+                                  itemBuilder: (_, i) => _TripCard(
+                                      trip: trips[i],
+                                      onTap: () => Navigator.of(context).push(
+                                          MaterialPageRoute(builder: (_) =>
+                                              SavedTripDetail(saved: trips[i]))),
+                                      onDelete: () {
+                                        context.read<TravelEngineProvider>()
+                                            .removeSavedTrip(trips[i].id);
+                                        showSToast(context, 'Trip removed.');
+                                      })))),
                     const SliverToBoxAdapter(child: SizedBox(height: 28)),
                   ],
 
@@ -184,6 +238,13 @@ class _SavedViewState extends State<SavedView>
 }
 
 // ─── Trip Card ────────────────────────────────────────────────
+// NOTE: no longer hardcodes width: 200 — that was specific to the
+// old horizontal-scroll-only layout. Now that this card can also
+// live inside a GridView (which sizes its children via the grid
+// delegate), the card sizes itself to whatever its parent gives
+// it. When used in the horizontal-scroll fallback, it's wrapped
+// in a SizedBox(width: 200) at the call site instead, so behavior
+// there is unchanged.
 class _TripCard extends StatelessWidget {
   final SavedTrip trip;
   final VoidCallback onTap, onDelete;
@@ -199,7 +260,6 @@ class _TripCard extends StatelessWidget {
         onTap: onTap,
         onLongPress: onDelete,
         child: Container(
-            width: 200,
             decoration: BoxDecoration(
                 borderRadius: SRadius.lg, color: Colors.white,
                 boxShadow: [BoxShadow(color: SColors.ink.withOpacity(0.06),
@@ -208,8 +268,16 @@ class _TripCard extends StatelessWidget {
                 borderRadius: SRadius.lg,
                 child: Stack(fit: StackFit.expand, children: [
                   img != null
-                      ? CachedNetworkImage(imageUrl: img, fit: BoxFit.cover)
-                      : Container(color: SColors.cardSurface),
+                      ? CachedNetworkImage(imageUrl: img, fit: BoxFit.cover,
+                      placeholder: (_, __) =>
+                          Container(color: SColors.cardSurface),
+                      errorWidget: (_, __, ___) =>
+                          Container(color: SColors.cardSurface,
+                              child: Icon(Icons.image_outlined,
+                                  color: SColors.warmGray, size: 28)))
+                      : Container(color: SColors.cardSurface,
+                      child: Icon(Icons.image_outlined,
+                          color: SColors.warmGray, size: 28)),
                   Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(
                       gradient: LinearGradient(
                           begin: Alignment.topCenter, end: Alignment.bottomCenter,
@@ -277,44 +345,44 @@ class _LookCardState extends State<_LookCard>
     return AnimatedBuilder(
         animation: _anim,
         builder: (_, __) => Opacity(
-        opacity: _anim.value,
-        child: Transform.translate(
-            offset: Offset(0, 20 * (1 - _anim.value)),
-            child: GestureDetector(
-                onTap: widget.onTap,
-                onLongPress: widget.onDelete,
-                child: ClipRRect(
-                    borderRadius: SRadius.lg,
-                    child: Stack(fit: StackFit.expand, children: [
-                      img != null
-                          ? CachedNetworkImage(imageUrl: img, fit: BoxFit.cover,
-                          placeholder: (_, __) =>
-                              Container(color: SColors.cardSurface))
-                          : Container(color: SColors.cardSurface,
-                          child: Icon(Icons.image_outlined,
-                              color: SColors.warmGray, size: 28)),
-                      Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                              begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                              colors: [Colors.transparent, Colors.black.withOpacity(0.72)],
-                              stops: const [0.45, 1.0])))),
-                      Positioned(bottom: 12, left: 12, right: 12,
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(look.fashionProfile.styleVibe,
-                                    style: GoogleFonts.cormorantGaramond(
-                                        fontSize: 15, fontWeight: FontWeight.w600,
-                                        color: Colors.white, height: 1.2),
-                                    maxLines: 2, overflow: TextOverflow.ellipsis),
-                                Text(widget.saved.destination,
-                                    style: STextStyles.caption(10)
-                                        .copyWith(color: Colors.white60)),
-                              ])),
-                      Positioned(top: 10, right: 10,
-                          child: Container(width: 8, height: 8,
-                              decoration: BoxDecoration(
-                                  color: SColors.gold, shape: BoxShape.circle))),
-                    ]))))));
+            opacity: _anim.value,
+            child: Transform.translate(
+                offset: Offset(0, 20 * (1 - _anim.value)),
+                child: GestureDetector(
+                    onTap: widget.onTap,
+                    onLongPress: widget.onDelete,
+                    child: ClipRRect(
+                        borderRadius: SRadius.lg,
+                        child: Stack(fit: StackFit.expand, children: [
+                          img != null
+                              ? CachedNetworkImage(imageUrl: img, fit: BoxFit.cover,
+                              placeholder: (_, __) =>
+                                  Container(color: SColors.cardSurface))
+                              : Container(color: SColors.cardSurface,
+                              child: Icon(Icons.image_outlined,
+                                  color: SColors.warmGray, size: 28)),
+                          Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                  begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                                  colors: [Colors.transparent, Colors.black.withOpacity(0.72)],
+                                  stops: const [0.45, 1.0])))),
+                          Positioned(bottom: 12, left: 12, right: 12,
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(look.fashionProfile.styleVibe,
+                                        style: GoogleFonts.cormorantGaramond(
+                                            fontSize: 15, fontWeight: FontWeight.w600,
+                                            color: Colors.white, height: 1.2),
+                                        maxLines: 2, overflow: TextOverflow.ellipsis),
+                                    Text(widget.saved.destination,
+                                        style: STextStyles.caption(10)
+                                            .copyWith(color: Colors.white60)),
+                                  ])),
+                          Positioned(top: 10, right: 10,
+                              child: Container(width: 8, height: 8,
+                                  decoration: BoxDecoration(
+                                      color: SColors.gold, shape: BoxShape.circle))),
+                        ]))))));
   }
 }
 

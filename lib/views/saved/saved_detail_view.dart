@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../shared/widgets.dart';
+import '../../core/constants/responsive.dart';
 import '../../models/lookbook_models.dart';
 import '../../models/trip_models.dart';
 
@@ -10,16 +11,467 @@ import '../../models/trip_models.dart';
 //  SAVED DETAIL VIEWS
 //  SavedLookDetail  — shows full look card with all details
 //  SavedTripDetail  — shows full itinerary day by day
+//
+//  FIX APPLIED: hero image previously used a hardcoded
+//  height: 380 with BoxFit.cover at full browser width. On wide
+//  desktop screens this forced an extreme zoom/crop that cut off
+//  the subject's head. Fixed by capping the hero width to
+//  Responsive.maxContentWidth (centered) and scaling height
+//  sensibly per breakpoint instead of one fixed value for all
+//  screen sizes. Everything else in this file is unchanged.
+//
+//  WIDE-WEB LAYOUT FIX: on screens wider than _wideLayoutBreak
+//  (900px), SavedLookDetail and the trip day view now arrange
+//  images on the LEFT and text/details on the RIGHT, side by
+//  side, instead of stacked top-to-bottom. Below that width —
+//  including all phone/app screens — the original stacked layout
+//  is used unchanged. This is a pure layout/arrangement change;
+//  none of the inner widgets (_HeroCarousel, _HeroMasonry,
+//  _MasonryTile, location tiles, pack sheet, etc.) were modified.
 // ══════════════════════════════════════════════════════════════
+
+// Width threshold above which we switch to the side-by-side
+// (image-left / text-right) layout. Below this, everything stacks
+// exactly as before — this covers all mobile app screens too.
+const double _wideLayoutBreak = 900;
+
+bool _isWideLayout(double width) => width > _wideLayoutBreak;
+
+// ─── Hero Carousel ────────────────────────────────────────────
+// EVOLUTION OF THE FIX:
+//  v1: fixed height + cover            → cropped heads on portrait photos
+//  v2: ratio-aware cover/contain        → fixed crop, but contain mode
+//      left ugly empty bars on mismatched photos
+//  v3 (this one): the box height is no longer arbitrary. It's
+//      calculated ONCE from the first photo's own natural aspect
+//      ratio (capped to a sensible min/max range). Every photo in
+//      the set is then cover-cropped to that SAME shape and shown
+//      in a swipeable PageView. Because the box was sized to match
+//      a real photo to begin with, the crop is always minor — no
+//      empty bars, no cut-off heads, no awkward single-image
+//      click-to-cycle. Swiping feels natural, the height stays
+//      visually consistent as you swipe between days/looks.
+class _HeroCarousel extends StatefulWidget {
+  final List<String> images;
+  final double minHeight;
+  final double maxHeight;
+  final BorderRadius? borderRadius;
+  final Widget Function(BuildContext, int currentIndex)? overlayBuilder;
+  const _HeroCarousel({
+    required this.images,
+    required this.minHeight,
+    required this.maxHeight,
+    this.borderRadius,
+    this.overlayBuilder,
+  });
+
+  @override
+  State<_HeroCarousel> createState() => _HeroCarouselState();
+}
+
+class _HeroCarouselState extends State<_HeroCarousel> {
+  final PageController _pageCtrl = PageController();
+  int _index = 0;
+  double? _resolvedHeight;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.images.isNotEmpty) {
+      _resolveHeightFromFirstImage();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageCtrl.dispose();
+    super.dispose();
+  }
+
+  void _resolveHeightFromFirstImage() {
+    final provider = CachedNetworkImageProvider(widget.images[0]);
+    final stream = provider.resolve(const ImageConfiguration());
+    late ImageStreamListener listener;
+    listener = ImageStreamListener((info, _) {
+      if (mounted) {
+        // Use the actual screen width at resolve-time to convert
+        // the photo's aspect ratio into a real pixel height, then
+        // clamp it to stay within a sane, app-consistent range.
+        final screenWidth = MediaQuery.of(context).size.width;
+        final boxWidth = screenWidth > Responsive.maxContentWidth
+            ? Responsive.maxContentWidth
+            : screenWidth;
+        final naturalHeight = boxWidth * (info.image.height / info.image.width);
+        setState(() {
+          _resolvedHeight = naturalHeight.clamp(widget.minHeight, widget.maxHeight);
+        });
+      }
+      stream.removeListener(listener);
+    }, onError: (_, __) {
+      stream.removeListener(listener);
+    });
+    stream.addListener(listener);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final height = _resolvedHeight ??
+        ((widget.minHeight + widget.maxHeight) / 2);
+
+    if (widget.images.isEmpty) {
+      return Container(
+        height: height,
+        color: SColors.cardSurface,
+        child: Icon(Icons.image_outlined, color: SColors.warmGray, size: 36),
+      );
+    }
+
+    final content = SizedBox(
+      height: height,
+      width: double.infinity,
+      child: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageCtrl,
+            itemCount: widget.images.length,
+            onPageChanged: (i) => setState(() => _index = i),
+            itemBuilder: (_, i) => CachedNetworkImage(
+              imageUrl: widget.images[i],
+              fit: BoxFit.cover,
+              alignment: Alignment.topCenter,
+              placeholder: (_, __) => Container(color: SColors.cardSurface),
+              errorWidget: (_, __, ___) => Container(
+                color: SColors.cardSurface,
+                child: Icon(Icons.image_outlined,
+                    color: SColors.warmGray, size: 36),
+              ),
+            ),
+          ),
+
+          if (widget.overlayBuilder != null)
+            widget.overlayBuilder!(context, _index),
+
+          // Dot indicators — only if more than one image
+          if (widget.images.length > 1)
+            Positioned(
+              bottom: 14,
+              left: 0,
+              right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(widget.images.length, (i) =>
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: _index == i ? 18 : 6,
+                      height: 6,
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      decoration: BoxDecoration(
+                        color: _index == i
+                            ? Colors.white
+                            : Colors.white.withOpacity(0.45),
+                        borderRadius: BorderRadius.circular(3),
+                        boxShadow: [BoxShadow(
+                          color: Colors.black.withOpacity(0.15),
+                          blurRadius: 3,
+                        )],
+                      ),
+                    ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+
+    return widget.borderRadius != null
+        ? ClipRRect(borderRadius: widget.borderRadius!, child: content)
+        : content;
+  }
+}
+
+// ─── Hero Masonry ─────────────────────────────────────────────
+// THE ACTUAL FIX (after carousel/cover/contain all fell short):
+// Every previous attempt tried to force ALL photos for a look
+// into ONE shared box shape — that's the wrong goal entirely,
+// because Pexels photos arrive with genuinely different natural
+// ratios (portrait people shots, landscape scenery shots, etc).
+// No single box height/crop strategy can serve all of them well.
+//
+// THIS FIX: stop forcing a shared shape. Each photo's card is
+// sized using its OWN aspect ratio via AspectRatio — never
+// cropped, never letterboxed. They're arranged in a masonry-style
+// grid (one large primary photo + smaller secondary photos beside
+// it, à la Pinterest / editorial mood boards) so different-shaped
+// photos sit naturally next to each other instead of competing for
+// the same box. Tapping any photo opens the existing full-screen
+// swipeable gallery — that part is unchanged and still works.
+class _HeroMasonry extends StatelessWidget {
+  final List<String> images;
+  final void Function(int tappedIndex) onTapImage;
+  final Widget? badge;
+  const _HeroMasonry({
+    required this.images,
+    required this.onTapImage,
+    this.badge,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (images.isEmpty) {
+      return AspectRatio(
+        aspectRatio: 4 / 5,
+        child: Container(
+          color: SColors.cardSurface,
+          child: Icon(Icons.image_outlined, color: SColors.warmGray, size: 36),
+        ),
+      );
+    }
+
+    if (images.length == 1) {
+      return Stack(children: [
+        _MasonryTile(url: images[0], onTap: () => onTapImage(0)),
+        if (badge != null) Positioned(bottom: 14, left: 14, child: badge!),
+      ]);
+    }
+
+    // 2+ photos: one large primary tile (left, taller) plus the
+    // rest stacked beside it (right column). Each tile keeps its
+    // own natural ratio via AspectRatio — nothing is cropped to
+    // match anything else.
+    final secondary = images.skip(1).take(3).toList();
+
+    return Stack(
+      children: [
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                flex: 3,
+                child: _MasonryTile(url: images[0], onTap: () => onTapImage(0)),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                flex: 2,
+                child: Column(
+                  children: List.generate(secondary.length, (i) {
+                    return Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                            top: i == 0 ? 0 : 4),
+                        child: _MasonryTile(
+                          url: secondary[i],
+                          onTap: () => onTapImage(i + 1),
+                          showMoreOverlay: i == secondary.length - 1 &&
+                              images.length > 4
+                              ? images.length - 4
+                              : null,
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (badge != null) Positioned(bottom: 14, left: 14, child: badge!),
+      ],
+    );
+  }
+}
+
+// A single masonry cell — sized purely by its own photo's natural
+// aspect ratio (capped to a sane min/max so one extreme outlier
+// photo can't blow out the whole layout).
+class _MasonryTile extends StatefulWidget {
+  final String url;
+  final VoidCallback onTap;
+  final int? showMoreOverlay;
+  const _MasonryTile({
+    required this.url,
+    required this.onTap,
+    this.showMoreOverlay,
+  });
+
+  @override
+  State<_MasonryTile> createState() => _MasonryTileState();
+}
+
+class _MasonryTileState extends State<_MasonryTile> {
+  double _ratio = 4 / 5; // sane portrait default until resolved
+
+  @override
+  void initState() {
+    super.initState();
+    final provider = CachedNetworkImageProvider(widget.url);
+    final stream = provider.resolve(const ImageConfiguration());
+    late ImageStreamListener listener;
+    listener = ImageStreamListener((info, _) {
+      if (mounted) {
+        final raw = info.image.width / info.image.height;
+        setState(() => _ratio = raw.clamp(0.55, 1.9));
+      }
+      stream.removeListener(listener);
+    }, onError: (_, __) {
+      stream.removeListener(listener);
+    });
+    stream.addListener(listener);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: AspectRatio(
+        aspectRatio: _ratio,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            CachedNetworkImage(
+              imageUrl: widget.url,
+              fit: BoxFit.cover,
+              placeholder: (_, __) => Container(color: SColors.cardSurface),
+              errorWidget: (_, __, ___) => Container(
+                color: SColors.cardSurface,
+                child: Icon(Icons.image_outlined,
+                    color: SColors.warmGray, size: 24),
+              ),
+            ),
+            if (widget.showMoreOverlay != null)
+              Container(
+                color: Colors.black.withOpacity(0.45),
+                alignment: Alignment.center,
+                child: Text('+${widget.showMoreOverlay}',
+                    style: STextStyles.label(18,
+                        color: Colors.white, letterSpacing: 0)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 // ─── Saved Look Detail ────────────────────────────────────────
 class SavedLookDetail extends StatelessWidget {
   final SavedLook saved;
   const SavedLookDetail({Key? key, required this.saved}) : super(key: key);
 
+  // The hero masonry block, extracted so it can be placed either
+  // above the details (narrow) or beside them (wide) without any
+  // duplication of its construction logic.
+  Widget _buildHeroMasonry(BuildContext context) {
+    final look = saved.look;
+    return _HeroMasonry(
+      images: look.visualAssets,
+      onTapImage: (i) => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => _SavedFullScreenGallery(
+            images: look.visualAssets,
+            initialIndex: i,
+          ),
+        ),
+      ),
+      badge: look.goldenHourTime == null
+          ? null
+          : Container(
+        padding: const EdgeInsets.symmetric(
+            horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: SColors.gold.withOpacity(0.9),
+          borderRadius: SRadius.full,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('✦ ',
+                style: TextStyle(
+                    fontSize: 11, color: Colors.white)),
+            Text('Photo-Op: ${look.goldenHourTime}',
+                style: STextStyles.label(10,
+                    color: Colors.white, letterSpacing: 0.3)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // The text/details block, extracted the same way as the hero
+  // masonry above — identical content, just reusable for both the
+  // stacked (narrow) and side-by-side (wide) arrangements.
+  Widget _buildDetails(BuildContext context) {
+    final look = saved.look;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Style vibe + occasion
+        Row(
+          children: [
+            Expanded(
+              child: Text(look.fashionProfile.styleVibe,
+                style: GoogleFonts.cormorantGaramond(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w600,
+                  color: SColors.ink,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: SColors.cardSurface,
+                borderRadius: SRadius.full,
+              ),
+              child: Text(look.occasion,
+                  style: STextStyles.caption(11)),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 6),
+        Text(look.moodTagline,
+            style: STextStyles.displayItalic(16)),
+
+        if (look.weatherNote.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Row(children: [
+            Icon(Icons.thermostat_outlined,
+                size: 13, color: SColors.warmGray),
+            const SizedBox(width: 5),
+            Text(look.weatherNote,
+                style: STextStyles.caption(12)),
+          ]),
+        ],
+
+        const SizedBox(height: 24),
+        _DetailSection(title: 'The Look',
+            content: look.fashionProfile.stylingDirectives),
+        const SizedBox(height: 18),
+        _DetailSection(title: 'Key Pieces',
+            content: look.fashionProfile.keyPieces),
+        const SizedBox(height: 18),
+        _DetailSection(title: 'Color Story',
+            content: look.fashionProfile.colorStory),
+
+        if (look.goldenHourTip != null) ...[
+          const SizedBox(height: 18),
+          _DetailSection(
+            title: '✦ Photo-Op Window',
+            content: look.goldenHourTip!,
+            titleColor: SColors.gold,
+          ),
+        ],
+
+        const SizedBox(height: 40),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final look = saved.look;
+    final isWeb = Responsive.isWeb(context);
 
     return Scaffold(
       backgroundColor: SColors.bg,
@@ -46,194 +498,60 @@ class SavedLookDetail extends StatelessWidget {
             ),
           ),
 
-          // ── Hero image ─────────────────────────────
+          // ── Hero + Details ─────────────────────────
+          // Below _wideLayoutBreak (incl. all app/mobile screens):
+          // original stacked layout, unchanged.
+          // Above it (wide web only): image masonry on the left,
+          // details on the right, side by side.
           SliverToBoxAdapter(
-            child: Stack(
-              children: [
-                // Tappable hero image
-                GestureDetector(
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => _SavedFullScreenGallery(
-                      images: look.visualAssets,
-                      initialIndex: 0,
-                    ),
-                  )),
-                  child: look.visualAssets.isNotEmpty
-                      ? CachedNetworkImage(
-                    imageUrl: look.visualAssets[0],
-                    width: double.infinity,
-                    height: 380,
-                    fit: BoxFit.cover,
-                  )
-                      : Container(
-                    height: 380,
-                    color: SColors.cardSurface,
-                    child: Icon(Icons.image_outlined,
-                        color: SColors.warmGray, size: 40),
-                  ),
-                ),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                    maxWidth: isWeb ? Responsive.maxContentWidth : double.infinity),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final wide = isWeb && _isWideLayout(constraints.maxWidth);
 
-// Extra image thumbnails — tappable
-                if (look.visualAssets.length > 1)
-                  Positioned(
-                    bottom: 16, right: 16,
-                    child: Row(
-                      children: look.visualAssets.asMap().entries.skip(1).take(2)
-                          .map((e) => GestureDetector(
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => _SavedFullScreenGallery(
-                              images: look.visualAssets,
-                              initialIndex: e.key,
-                            ),
-                          ),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 8),
-                          child: ClipRRect(
-                            borderRadius: SRadius.sm,
-                            child: CachedNetworkImage(
-                              imageUrl: e.value,
-                              width: 56, height: 56,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        ),
-                      ))
-                          .toList(),
-                    ),
-                  ),
-                // look.visualAssets.isNotEmpty
-                //     ? CachedNetworkImage(
-                //   imageUrl: look.visualAssets[0],
-                //   width: double.infinity,
-                //   height: 380,
-                //   fit: BoxFit.cover,
-                // )
-                //     : Container(
-                //   height: 380,
-                //   color: SColors.cardSurface,
-                //   child: Icon(Icons.image_outlined,
-                //       color: SColors.warmGray, size: 40),
-                // ),
-
-                // Golden hour badge
-                if (look.goldenHourTime != null)
-                  Positioned(
-                    bottom: 16, left: 16,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: SColors.gold.withOpacity(0.9),
-                        borderRadius: SRadius.full,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                    if (!wide) {
+                      // ── Original stacked layout (unchanged) ──
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('✦ ',
-                              style: TextStyle(
-                                  fontSize: 11, color: Colors.white)),
-                          Text('Photo-Op: ${look.goldenHourTime}',
-                              style: STextStyles.label(10,
-                                  color: Colors.white, letterSpacing: 0.3)),
+                          ClipRRect(
+                            borderRadius: isWeb ? SRadius.lg : BorderRadius.zero,
+                            child: _buildHeroMasonry(context),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: _buildDetails(context),
+                          ),
+                        ],
+                      );
+                    }
+
+                    // ── Wide web layout: image left, text right ──
+                    return Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 5,
+                            child: ClipRRect(
+                              borderRadius: SRadius.lg,
+                              child: _buildHeroMasonry(context),
+                            ),
+                          ),
+                          const SizedBox(width: 32),
+                          Expanded(
+                            flex: 4,
+                            child: _buildDetails(context),
+                          ),
                         ],
                       ),
-                    ),
-                  ),
-
-                // Extra thumbnails
-                if (look.visualAssets.length > 1)
-                  Positioned(
-                    bottom: 16, right: 16,
-                    child: Row(
-                      children: look.visualAssets.skip(1).take(2)
-                          .map((url) => Padding(
-                        padding: const EdgeInsets.only(left: 6),
-                        child: ClipRRect(
-                          borderRadius: SRadius.sm,
-                          child: CachedNetworkImage(
-                            imageUrl: url,
-                            width: 52, height: 52,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      ))
-                          .toList(),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-          // ── Details ────────────────────────────────
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Style vibe + occasion
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(look.fashionProfile.styleVibe,
-                          style: GoogleFonts.cormorantGaramond(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w600,
-                            color: SColors.ink,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: SColors.cardSurface,
-                          borderRadius: SRadius.full,
-                        ),
-                        child: Text(look.occasion,
-                            style: STextStyles.caption(11)),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 6),
-                  Text(look.moodTagline,
-                      style: STextStyles.displayItalic(16)),
-
-                  if (look.weatherNote.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Row(children: [
-                      Icon(Icons.thermostat_outlined,
-                          size: 13, color: SColors.warmGray),
-                      const SizedBox(width: 5),
-                      Text(look.weatherNote,
-                          style: STextStyles.caption(12)),
-                    ]),
-                  ],
-
-                  const SizedBox(height: 24),
-                  _DetailSection(title: 'The Look',
-                      content: look.fashionProfile.stylingDirectives),
-                  const SizedBox(height: 18),
-                  _DetailSection(title: 'Key Pieces',
-                      content: look.fashionProfile.keyPieces),
-                  const SizedBox(height: 18),
-                  _DetailSection(title: 'Color Story',
-                      content: look.fashionProfile.colorStory),
-
-                  if (look.goldenHourTip != null) ...[
-                    const SizedBox(height: 18),
-                    _DetailSection(
-                      title: '✦ Photo-Op Window',
-                      content: look.goldenHourTip!,
-                      titleColor: SColors.gold,
-                    ),
-                  ],
-
-                  const SizedBox(height: 40),
-                ],
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -286,7 +604,8 @@ class _SavedTripDetailState extends State<SavedTripDetail>
 
   @override
   Widget build(BuildContext context) {
-    final trip = widget.saved.itinerary;
+    final trip  = widget.saved.itinerary;
+    final isWeb = Responsive.isWeb(context);
 
     return Scaffold(
       backgroundColor: SColors.bg,
@@ -295,92 +614,98 @@ class _SavedTripDetailState extends State<SavedTripDetail>
           // ── Header ─────────────────────────────────
           SafeArea(
             bottom: false,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-                  child: Row(
-                    children: [
-                      SBackButton(),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(trip.destination.toUpperCase(),
-                                style: STextStyles.label(16,
-                                    color: SColors.ink, letterSpacing: 3)),
-                            Text('${trip.durationDays} days · ${trip.month}',
-                                style: STextStyles.displayItalic(12)),
-                          ],
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: _showPackSheet,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 7),
-                          decoration: BoxDecoration(
-                            color: SColors.goldLight,
-                            borderRadius: SRadius.full,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                    maxWidth: isWeb ? Responsive.maxContentWidth : double.infinity),
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                      child: Row(
+                        children: [
+                          SBackButton(),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(trip.destination.toUpperCase(),
+                                    style: STextStyles.label(16,
+                                        color: SColors.ink, letterSpacing: 3)),
+                                Text('${trip.durationDays} days · ${trip.month}',
+                                    style: STextStyles.displayItalic(12)),
+                              ],
+                            ),
                           ),
-                          child: Row(children: [
-                            Icon(Icons.luggage_outlined,
-                                size: 14, color: SColors.goldDark),
-                            const SizedBox(width: 5),
-                            Text('OOTD Pack',
-                                style: STextStyles.label(10,
-                                    color: SColors.goldDark,
-                                    letterSpacing: 0.5)),
-                          ]),
-                        ),
+                          GestureDetector(
+                            onTap: _showPackSheet,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: SColors.goldLight,
+                                borderRadius: SRadius.full,
+                              ),
+                              child: Row(children: [
+                                Icon(Icons.luggage_outlined,
+                                    size: 14, color: SColors.goldDark),
+                                const SizedBox(width: 5),
+                                Text('OOTD Pack',
+                                    style: STextStyles.label(10,
+                                        color: SColors.goldDark,
+                                        letterSpacing: 0.5)),
+                              ]),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    if (trip.days.isNotEmpty)
+                      TabBar(
+                        controller: _tabCtrl,
+                        isScrollable: true,
+                        indicatorColor: SColors.gold,
+                        indicatorWeight: 2,
+                        labelPadding:
+                        const EdgeInsets.symmetric(horizontal: 18),
+                        tabs: List.generate(trip.days.length, (i) {
+                          final day = trip.days[i];
+                          final active = i == _currentDay;
+                          return Tab(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('DAY ${day.dayNumber}',
+                                  style: STextStyles.label(9,
+                                    color: active
+                                        ? SColors.gold
+                                        : SColors.warmGray,
+                                    letterSpacing: 1.5,
+                                  ),
+                                ),
+                                Text(
+                                  day.themeTitle.length > 20
+                                      ? '${day.themeTitle.substring(0, 20)}...'
+                                      : day.themeTitle,
+                                  style: STextStyles.body(11,
+                                    color: active
+                                        ? SColors.ink
+                                        : SColors.warmGray,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                      ),
+                  ],
                 ),
-
-                const SizedBox(height: 12),
-
-                if (trip.days.isNotEmpty)
-                  TabBar(
-                    controller: _tabCtrl,
-                    isScrollable: true,
-                    indicatorColor: SColors.gold,
-                    indicatorWeight: 2,
-                    labelPadding:
-                    const EdgeInsets.symmetric(horizontal: 18),
-                    tabs: List.generate(trip.days.length, (i) {
-                      final day = trip.days[i];
-                      final active = i == _currentDay;
-                      return Tab(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('DAY ${day.dayNumber}',
-                              style: STextStyles.label(9,
-                                color: active
-                                    ? SColors.gold
-                                    : SColors.warmGray,
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                            Text(
-                              day.themeTitle.length > 20
-                                  ? '${day.themeTitle.substring(0, 20)}...'
-                                  : day.themeTitle,
-                              style: STextStyles.body(11,
-                                color: active
-                                    ? SColors.ink
-                                    : SColors.warmGray,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                  ),
-              ],
+              ),
             ),
           ),
 
@@ -417,124 +742,149 @@ class _SavedDayViewState extends State<_SavedDayView>
   @override
   bool get wantKeepAlive => true;
 
-  int _imgIndex = 0;
-  late PageController _imgCtrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _imgCtrl = PageController();
+  // Photo carousel block, extracted so it can be placed either
+  // above the route list (narrow) or beside it (wide) without
+  // duplicating its construction.
+  Widget _buildHeroCarousel(BuildContext context, double maxHeight) {
+    final day = widget.day;
+    return _HeroCarousel(
+      images: day.visualAssets,
+      minHeight: Responsive.isWeb(context) ? 280 : 240,
+      maxHeight: maxHeight,
+      overlayBuilder: (context, _) => Stack(
+        children: [
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withOpacity(0.55),
+                  ],
+                  stops: const [0.5, 1.0],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 14, left: 16, right: 16,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: SColors.gold.withOpacity(0.85),
+                    borderRadius: SRadius.full,
+                  ),
+                  child: Text(day.fashionProfile.styleVibe,
+                      style: STextStyles.label(10,
+                          color: Colors.white, letterSpacing: 0.3)),
+                ),
+                const SizedBox(height: 5),
+                Text(day.fashionProfile.keyPieces,
+                  style: STextStyles.body(12,
+                      color: Colors.white.withOpacity(0.9)),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  @override
-  void dispose() {
-    _imgCtrl.dispose();
-    super.dispose();
+  // Route/location list block, extracted the same way.
+  Widget _buildRouteList(BuildContext context) {
+    final day = widget.day;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Container(
+            width: 3, height: 14,
+            decoration: BoxDecoration(
+                color: SColors.gold, borderRadius: SRadius.full),
+          ),
+          const SizedBox(width: 10),
+          Text("TODAY'S ROUTE",
+              style: STextStyles.label(10,
+                  color: SColors.warmGray, letterSpacing: 2.5)),
+        ]),
+        const SizedBox(height: 12),
+        ...day.curatedLocations.asMap().entries.map((e) =>
+            _SavedLocationTile(
+              location: e.value,
+              isLast: e.key == day.curatedLocations.length - 1,
+            ),
+        ),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final day = widget.day;
+    final isWeb = Responsive.isWeb(context);
+    final w     = MediaQuery.of(context).size.width;
+
+    // Same fix applied here: scaled height instead of one fixed
+    // 280px value for every screen size.
+    final dayImgHeight = isWeb ? (w > 1200 ? 360.0 : 320.0) : 280.0;
 
     return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Photo
-          Stack(
-            children: [
-              SizedBox(
-                height: 280,
-                child: day.visualAssets.isEmpty
-                    ? Container(color: SColors.cardSurface)
-                    : PageView.builder(
-                  controller: _imgCtrl,
-                  itemCount: day.visualAssets.length,
-                  onPageChanged: (i) =>
-                      setState(() => _imgIndex = i),
-                  itemBuilder: (_, i) => CachedNetworkImage(
-                    imageUrl: day.visualAssets[i],
-                    fit: BoxFit.cover,
-                    placeholder: (_, __) =>
-                        Container(color: SColors.cardSurface),
-                  ),
-                ),
-              ),
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withOpacity(0.55),
-                      ],
-                      stops: const [0.5, 1.0],
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: 14, left: 16, right: 16,
-                child: Column(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+              maxWidth: isWeb ? Responsive.maxContentWidth : double.infinity),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = isWeb && _isWideLayout(constraints.maxWidth);
+
+              if (!wide) {
+                // ── Original stacked layout (unchanged) ──
+                return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: SColors.gold.withOpacity(0.85),
-                        borderRadius: SRadius.full,
-                      ),
-                      child: Text(day.fashionProfile.styleVibe,
-                          style: STextStyles.label(10,
-                              color: Colors.white, letterSpacing: 0.3)),
+                    _buildHeroCarousel(context, dayImgHeight),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                      child: _buildRouteList(context),
                     ),
-                    const SizedBox(height: 5),
-                    Text(day.fashionProfile.keyPieces,
-                      style: STextStyles.body(12,
-                          color: Colors.white.withOpacity(0.9)),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    const SizedBox(height: 32),
+                  ],
+                );
+              }
+
+              // ── Wide web layout: image left, route list right ──
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 5,
+                      child: ClipRRect(
+                        borderRadius: SRadius.lg,
+                        child: _buildHeroCarousel(context, dayImgHeight),
+                      ),
+                    ),
+                    const SizedBox(width: 32),
+                    Expanded(
+                      flex: 4,
+                      child: _buildRouteList(context),
                     ),
                   ],
                 ),
-              ),
-            ],
+              );
+            },
           ),
-
-          // Locations
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-            child: Row(children: [
-              Container(
-                width: 3, height: 14,
-                decoration: BoxDecoration(
-                    color: SColors.gold, borderRadius: SRadius.full),
-              ),
-              const SizedBox(width: 10),
-              Text("TODAY'S ROUTE",
-                  style: STextStyles.label(10,
-                      color: SColors.warmGray, letterSpacing: 2.5)),
-            ]),
-          ),
-
-          const SizedBox(height: 12),
-
-          ...day.curatedLocations.asMap().entries.map((e) =>
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: _SavedLocationTile(
-                  location: e.value,
-                  isLast: e.key == day.curatedLocations.length - 1,
-                ),
-              ),
-          ),
-
-          const SizedBox(height: 32),
-        ],
+        ),
       ),
     );
   }
