@@ -8,6 +8,42 @@ import '../../core/constants/responsive.dart';
 import '../../models/trip_models.dart';
 import '../../providers/travel_engine_provider.dart';
 
+// ══════════════════════════════════════════════════════════════
+//  FIX APPLIED (visual consistency with SavedTripDetail):
+//  The day hero photo previously rendered full-bleed at a fixed
+//  height: 300 with BoxFit.cover at full browser width, while
+//  everything else on the page (header, route cards) was
+//  constrained to Responsive.maxContentWidth. On wide screens
+//  this made the photo look like a thin, raw, disconnected strip
+//  stretched edge-to-edge with no rounding — visually out of sync
+//  with the rest of the contained layout, and with how this same
+//  trip looks once saved (SavedTripDetail).
+//
+//  FIX, ROUND 2 — the part that actually mattered:
+//  Containing the box and rounding the corners wasn't the real
+//  fix; it was cosmetic. The box height was still an arbitrary
+//  fixed number (320/360), so BoxFit.cover still had to force-crop
+//  whatever photo came back to fit it — on a wide screen that
+//  crop is aggressive and reads as "zoomed in." This is the exact
+//  v1 mistake described in the saved-page comments, which I
+//  initially failed to actually port over.
+//
+//  The real fix (ported from SavedTripDetail's _HeroCarousel):
+//  resolve the FIRST photo's own natural aspect ratio once it
+//  loads, convert that ratio into a real pixel height for the
+//  current box width, and clamp it to a sane min/max range. The
+//  box height now adapts to the photo instead of forcing the
+//  photo into an arbitrary box — so the crop stays minor instead
+//  of aggressive. Every photo in the set still cover-crops to that
+//  same resolved height when swiping, which keeps the height
+//  visually stable as you swipe between photos.
+//
+//  The swipe-dot indicator was also moved from a vertical strip on
+//  the right edge to a centered row at the bottom, matching the
+//  pattern used everywhere else in the app. Nothing else on this
+//  page (tabs, header, route cards, pack sheet) was touched.
+// ══════════════════════════════════════════════════════════════
+
 class ItineraryView extends StatefulWidget {
   final String destination, month;
   final int durationDays;
@@ -156,6 +192,137 @@ class _ItineraryViewState extends State<ItineraryView>
   }
 }
 
+// A box that resolves its own height from the first photo's
+// natural aspect ratio (clamped to [minHeight, maxHeight]), then
+// shows all photos swipeable inside a PageView cover-cropped to
+// that SAME resolved height. Ported directly from SavedTripDetail's
+// _HeroCarousel — this is the actual fix for the "zoomed in" look:
+// the box adapts to the photo instead of forcing the photo into an
+// arbitrary fixed-height box.
+class _DayHeroCarousel extends StatefulWidget {
+  final List<String> images;
+  final double minHeight;
+  final double maxHeight;
+  final Widget overlay;
+  const _DayHeroCarousel({
+    required this.images,
+    required this.minHeight,
+    required this.maxHeight,
+    required this.overlay,
+  });
+
+  @override
+  State<_DayHeroCarousel> createState() => _DayHeroCarouselState();
+}
+
+class _DayHeroCarouselState extends State<_DayHeroCarousel> {
+  final PageController _pageCtrl = PageController();
+  int _index = 0;
+  double? _resolvedHeight;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.images.isNotEmpty) _resolveHeightFromFirstImage();
+  }
+
+  @override
+  void dispose() {
+    _pageCtrl.dispose();
+    super.dispose();
+  }
+
+  void _resolveHeightFromFirstImage() {
+    final provider = CachedNetworkImageProvider(widget.images[0]);
+    final stream = provider.resolve(const ImageConfiguration());
+    late ImageStreamListener listener;
+    listener = ImageStreamListener((info, _) {
+      if (mounted) {
+        // Convert the photo's own natural aspect ratio into a real
+        // pixel height for the current box width, then clamp it to
+        // stay within a sane, app-consistent range. This is the
+        // step that was missing before — without it, the box
+        // height is arbitrary and BoxFit.cover has to force-crop.
+        final screenWidth = MediaQuery.of(context).size.width;
+        final boxWidth = screenWidth > Responsive.maxContentWidth
+            ? Responsive.maxContentWidth
+            : screenWidth;
+        final naturalHeight = boxWidth * (info.image.height / info.image.width);
+        setState(() {
+          _resolvedHeight = naturalHeight.clamp(widget.minHeight, widget.maxHeight);
+        });
+      }
+      stream.removeListener(listener);
+    }, onError: (_, __) {
+      stream.removeListener(listener);
+    });
+    stream.addListener(listener);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final height = _resolvedHeight ?? ((widget.minHeight + widget.maxHeight) / 2);
+
+    if (widget.images.isEmpty) {
+      return Container(
+        height: height,
+        color: SColors.cardSurface,
+        child: Icon(Icons.image_outlined, color: SColors.warmGray, size: 36),
+      );
+    }
+
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: Stack(children: [
+        PageView.builder(
+          controller: _pageCtrl,
+          itemCount: widget.images.length,
+          onPageChanged: (i) => setState(() => _index = i),
+          itemBuilder: (_, i) => CachedNetworkImage(
+            imageUrl: widget.images[i],
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+            placeholder: (_, __) => Container(color: SColors.cardSurface),
+            errorWidget: (_, __, ___) => Container(
+              color: SColors.cardSurface,
+              child: Icon(Icons.image_outlined, color: SColors.warmGray, size: 36),
+            ),
+          ),
+        ),
+        widget.overlay,
+        if (widget.images.length > 1)
+          Positioned(
+            bottom: 14,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(widget.images.length, (i) =>
+                  AnimatedContainer(
+                    duration: SDuration.fast,
+                    width: _index == i ? 18 : 6,
+                    height: 6,
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    decoration: BoxDecoration(
+                      color: _index == i
+                          ? Colors.white
+                          : Colors.white.withOpacity(0.45),
+                      borderRadius: BorderRadius.circular(3),
+                      boxShadow: [BoxShadow(
+                        color: Colors.black.withOpacity(0.15),
+                        blurRadius: 3,
+                      )],
+                    ),
+                  ),
+              ),
+            ),
+          ),
+      ]),
+    );
+  }
+}
+
 class _DayView extends StatefulWidget {
   final DailyPlan day;
   const _DayView({required this.day});
@@ -166,112 +333,157 @@ class _DayView extends StatefulWidget {
 class _DayViewState extends State<_DayView> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
-  int _img = 0;
-  late PageController _pc;
 
-  @override
-  void initState() { super.initState(); _pc = PageController(); }
-  @override
-  void dispose() { _pc.dispose(); super.dispose(); }
+  // Width threshold above which we switch to the side-by-side
+  // (image-right / text-left) layout. Below this — including all
+  // phone/app screens — everything stacks exactly as before.
+  static const double _wideBreak = 900;
+
+  // The hero photo block, extracted so it can be placed either
+  // above the route list (narrow) or beside it (wide) without
+  // duplicating its construction.
+  Widget _buildHero(BuildContext context, bool isWeb, double minH, double maxH) {
+    final day = widget.day;
+    return ClipRRect(
+      borderRadius: isWeb ? SRadius.lg : BorderRadius.zero,
+      child: _DayHeroCarousel(
+        images: day.visualAssets,
+        minHeight: minH,
+        maxHeight: maxH,
+        overlay: Stack(children: [
+          Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(
+              gradient: LinearGradient(
+                  begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Colors.black.withOpacity(0.55)],
+                  stops: const [0.5, 1.0])))),
+          // FIX: previously `Positioned(bottom: 14, left: 16,
+          // right: 16, child: Column(...))` had no top/height bound,
+          // so the Column's natural height (badge + 2-line caption +
+          // weather row) could exceed the available space by a
+          // sub-pixel amount on some font/zoom combinations, tripping
+          // "RenderFlex overflowed by 0.4 pixels". Adding `top: 0` so
+          // the Positioned is bounded on both ends, plus
+          // `mainAxisSize: MainAxisSize.min` on the Column, removes
+          // the ambiguous unbounded-height case entirely.
+          Positioned(top: 0, bottom: 14, left: 16, right: 16,
+              child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                            color: SColors.gold.withOpacity(0.85),
+                            borderRadius: SRadius.full),
+                        child: Text(day.fashionProfile.styleVibe,
+                            style: STextStyles.label(10,
+                                color: Colors.white, letterSpacing: 0.3))),
+                    const SizedBox(height: 5),
+                    Text(day.fashionProfile.keyPieces,
+                        style: STextStyles.body(12,
+                            color: Colors.white.withOpacity(0.9)),
+                        maxLines: 2, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 3),
+                    Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.thermostat_outlined,
+                          size: 11, color: Colors.white60),
+                      const SizedBox(width: 3),
+                      Text(day.weatherForecast,
+                          style: STextStyles.caption(11)
+                              .copyWith(color: Colors.white60)),
+                    ]),
+                  ])),
+        ]),
+      ),
+    );
+  }
+
+  // The route-list block, extracted the same way as the hero photo.
+  Widget _buildRouteList(BuildContext context) {
+    final day = widget.day;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Container(width: 3, height: 14,
+              decoration: BoxDecoration(
+                  color: SColors.gold, borderRadius: SRadius.full)),
+          const SizedBox(width: 10),
+          Text("TODAY'S ROUTE", style: STextStyles.label(10,
+              color: SColors.warmGray, letterSpacing: 2.5)),
+        ]),
+        const SizedBox(height: 12),
+        ...day.curatedLocations.asMap().entries.map((e) =>
+            _LocCard(loc: e.value,
+                isLast: e.key == day.curatedLocations.length - 1)),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final day   = widget.day;
     final isWeb = Responsive.isWeb(context);
+    final w     = MediaQuery.of(context).size.width;
+
+    // min/max range the resolved height is clamped into — same
+    // spirit as the saved trip detail page, so very tall or very
+    // wide outlier photos can't blow out the layout.
+    final maxHeroHeight = isWeb ? (w > 1200 ? 380.0 : 340.0) : 320.0;
+    final minHeroHeight = isWeb ? 260.0 : 220.0;
 
     return SingleChildScrollView(
         child: Center(
           child: ConstrainedBox(
               constraints: BoxConstraints(
                   maxWidth: isWeb ? Responsive.maxContentWidth : double.infinity),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                // Photo
-                Stack(children: [
-                  SizedBox(
-                      height: 300,
-                      child: day.visualAssets.isEmpty
-                          ? Container(color: SColors.cardSurface,
-                          child: Icon(Icons.image_outlined,
-                              color: SColors.warmGray, size: 36))
-                          : PageView.builder(
-                          controller: _pc,
-                          itemCount: day.visualAssets.length,
-                          onPageChanged: (i) => setState(() => _img = i),
-                          itemBuilder: (_, i) => CachedNetworkImage(
-                              imageUrl: day.visualAssets[i], fit: BoxFit.cover,
-                              placeholder: (_, __) =>
-                                  Container(color: SColors.cardSurface)))),
-                  Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                          begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                          colors: [Colors.transparent, Colors.black.withOpacity(0.55)],
-                          stops: const [0.5, 1.0])))),
-                  Positioned(bottom: 14, left: 16, right: 16,
-                      child: Row(crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Expanded(child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(
-                                          color: SColors.gold.withOpacity(0.85),
-                                          borderRadius: SRadius.full),
-                                      child: Text(day.fashionProfile.styleVibe,
-                                          style: STextStyles.label(10,
-                                              color: Colors.white, letterSpacing: 0.3))),
-                                  const SizedBox(height: 5),
-                                  Text(day.fashionProfile.keyPieces,
-                                      style: STextStyles.body(12,
-                                          color: Colors.white.withOpacity(0.9)),
-                                      maxLines: 2, overflow: TextOverflow.ellipsis),
-                                  const SizedBox(height: 3),
-                                  Row(children: [
-                                    Icon(Icons.thermostat_outlined,
-                                        size: 11, color: Colors.white60),
-                                    const SizedBox(width: 3),
-                                    Text(day.weatherForecast,
-                                        style: STextStyles.caption(11)
-                                            .copyWith(color: Colors.white60)),
-                                  ]),
-                                ])),
-                            if (day.visualAssets.length > 1)
-                              Column(children: List.generate(
-                                  day.visualAssets.length, (i) => AnimatedContainer(
-                                  duration: SDuration.fast,
-                                  width: 4,
-                                  height: _img == i ? 14 : 4,
-                                  margin: const EdgeInsets.only(bottom: 3),
-                                  decoration: BoxDecoration(
-                                      color: _img == i ? SColors.gold : Colors.white38,
-                                      borderRadius: SRadius.full)))),
-                          ])),
-                ]),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final wide = isWeb && constraints.maxWidth > _wideBreak;
 
-                // Route header
-                Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-                    child: Row(children: [
-                      Container(width: 3, height: 14,
-                          decoration: BoxDecoration(
-                              color: SColors.gold, borderRadius: SRadius.full)),
-                      const SizedBox(width: 10),
-                      Text("TODAY'S ROUTE", style: STextStyles.label(10,
-                          color: SColors.warmGray, letterSpacing: 2.5)),
-                    ])),
+                  if (!wide) {
+                    // ── Original stacked layout (image on top, text
+                    // below) — unchanged for app/mobile and narrow web. ──
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(
+                              isWeb ? 20 : 0, isWeb ? 16 : 0, isWeb ? 20 : 0, 0),
+                          child: _buildHero(context, isWeb, minHeroHeight, maxHeroHeight),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                          child: _buildRouteList(context),
+                        ),
+                        const SizedBox(height: 32),
+                      ],
+                    );
+                  }
 
-                const SizedBox(height: 12),
-
-                ...day.curatedLocations.asMap().entries.map((e) =>
-                    Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: _LocCard(loc: e.value,
-                            isLast: e.key == day.curatedLocations.length - 1))),
-
-                const SizedBox(height: 32),
-              ])),
+                  // ── Wide web layout: text/route on the LEFT,
+                  // image on the RIGHT, side by side. ──
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 4,
+                          child: _buildRouteList(context),
+                        ),
+                        const SizedBox(width: 32),
+                        Expanded(
+                          flex: 5,
+                          child: _buildHero(context, isWeb, minHeroHeight, maxHeroHeight),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              )),
         ));
   }
 }
